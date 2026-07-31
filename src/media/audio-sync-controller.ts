@@ -60,6 +60,7 @@ export class AudioSyncController {
   private needsInitialSync = true // snap to the live target on join/resync, however small the drift
   private measuredLatencySec = 0 // auto-measured output latency (see sampleOutputLatency)
   private bufferEngine: BufferAudioEngine | null = null
+  private mediaSessionReady = false // lock-screen now-playing session wired (all platforms)
   private useBuffer = false // buffer engine is the active output (iOS, once decoded)
   private bufferUpgradePending = IS_IOS // element is bootstrapping while the buffer decodes
   unlocked = false
@@ -125,6 +126,9 @@ export class AudioSyncController {
     if (this.useBuffer) return this.bufferEngine!.autoLatencyMs
     return this.outputLatencySec() * 1000
   }
+  get backgroundKeepAlive(): boolean {
+    return this.bufferEngine?.backgroundKeepAlive ?? false
+  }
 
   async unlock(): Promise<void> {
     this.hardStopped = false
@@ -134,6 +138,7 @@ export class AudioSyncController {
     this.lastTrackAt = 0
     this.seekSettleUntil = 0
     this.needsInitialSync = true
+    this.setupMediaSession() // lock-screen now-playing card (all platforms; must be in-gesture)
     // iOS: unlock the buffer engine's context inside this gesture (idempotent — also
     // clears its stopped state on re-join). The element below is primed too since it
     // bootstraps playback while the buffer decodes and is the fallback if decode fails.
@@ -188,6 +193,44 @@ export class AudioSyncController {
   resume(): void {
     if (this.bufferEngineWanted) this.bufferEngine!.resume()
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {})
+  }
+
+  /**
+   * Register a lock-screen / now-playing MediaSession. Cross-platform: on iOS it also
+   * anchors the background keep-alive (BufferAudioEngine's stream-sink element is the thing
+   * iOS keeps alive); on Android/desktop it's the now-playing card. Idempotent, and must be
+   * called inside the join gesture so the action handlers stick.
+   */
+  private setupMediaSession(): void {
+    if (this.mediaSessionReady) return
+    const ms = navigator.mediaSession
+    if (!ms) return
+    this.mediaSessionReady = true
+    try {
+      if ('MediaMetadata' in window) {
+        ms.metadata = new MediaMetadata({ title: 'Live audio', artist: 'Empower A/V sync' })
+      }
+      ms.playbackState = 'playing'
+      // A synced room shouldn't be pausable from one follower's lock screen (it would just
+      // desync and go silent), so both handlers re-warm playback rather than stop it.
+      ms.setActionHandler('play', () => this.resume())
+      ms.setActionHandler('pause', () => this.resume())
+    } catch {
+      /* MediaSession is best-effort */
+    }
+  }
+
+  private teardownMediaSession(): void {
+    this.mediaSessionReady = false
+    const ms = navigator.mediaSession
+    if (!ms) return
+    ms.playbackState = 'none'
+    try {
+      ms.setActionHandler('play', null)
+      ms.setActionHandler('pause', null)
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -375,6 +418,7 @@ export class AudioSyncController {
 
   stop(): void {
     this.bufferEngine?.stop()
+    this.teardownMediaSession()
     this.hardStopped = true
     this.el.pause()
     this.el.playbackRate = 1

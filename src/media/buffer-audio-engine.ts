@@ -7,6 +7,17 @@
  *    sample-accurate, no stall),
  *  - rate nudges are honored (playbackRate is an AudioParam Safari respects),
  *  - output ignores the hardware mute switch, same as the element+WebAudio routing did.
+ *
+ * Background keep-alive (iOS): iOS suspends the AudioContext the moment the screen locks,
+ * which would kill buffer playback on lock. The graph is therefore routed through a
+ * MediaStreamAudioDestinationNode played by a real <audio> element that iOS registers as
+ * the active MediaSession — the element is the thing iOS keeps alive in the background,
+ * giving the (otherwise-suspendable) graph a reason to keep running. Seeks are still
+ * upstream source-node swaps (the <audio> sink is never seeked), so the pipeline stall we
+ * fled the element for doesn't come back. Trade-offs: the element adds output latency we
+ * can't measure via getOutputTimestamp, and while locked the corrector's timer + WebRTC
+ * beats are throttled, so playback free-runs on the context clock until wake/resync.
+ * (MediaSession metadata itself is owned by AudioSyncController — it's cross-platform.)
  */
 import { signedDrift, correctionRate } from '../sync/sync-math'
 import type { CorrectionInfo, CorrectionMode } from './audio-sync-controller'
@@ -27,6 +38,10 @@ const FALLBACK_LATENCY_SEC = 0.12 // iOS often reports no latency at all
 
 export class BufferAudioEngine {
   private ctx: AudioContext | null = null
+  // Background keep-alive sink: the graph feeds this stream, an <audio> element plays it,
+  // and iOS keeps that element (and thus the graph) alive when the screen locks.
+  private streamDest: MediaStreamAudioDestinationNode | null = null
+  private sinkEl: HTMLAudioElement | null = null
   private buffer: AudioBuffer | null = null
   private bufferUrl: string | null = null // url the decoded buffer belongs to
   private loadingUrl: string | null = null
@@ -58,12 +73,29 @@ export class BufferAudioEngine {
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctx) return Promise.reject(new Error('Web Audio unavailable'))
     if (!this.ctx) this.ctx = new Ctx()
+    // Background keep-alive: build the stream sink + start its <audio> element inside the
+    // gesture (iOS requires the play() to be gesture-initiated). The stream is always live —
+    // it carries silence until a source connects — so the element stays "playing".
+    if (!this.streamDest) {
+      try {
+        this.streamDest = this.ctx.createMediaStreamDestination()
+        const el = new Audio()
+        el.autoplay = true
+        ;(el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+        el.setAttribute('playsinline', '')
+        el.srcObject = this.streamDest.stream
+        this.sinkEl = el
+        void el.play().catch(() => {})
+      } catch {
+        this.streamDest = null // fall back to ctx.destination
+      }
+    }
     // Prime output inside the gesture with a one-frame silent buffer.
     try {
       const silent = this.ctx.createBuffer(1, 1, this.ctx.sampleRate)
       const s = this.ctx.createBufferSource()
       s.buffer = silent
-      s.connect(this.ctx.destination)
+      s.connect(this.outputNode())
       s.start()
     } catch {
       /* priming is best-effort */
@@ -75,6 +107,20 @@ export class BufferAudioEngine {
 
   resume(): void {
     if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {})
+    // The keep-alive element can be paused by iOS on interruption — nudge it back.
+    if (this.sinkEl && this.sinkEl.paused) {
+      if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing'
+      void this.sinkEl.play().catch(() => {})
+    }
+  }
+
+  get backgroundKeepAlive(): boolean {
+    return this.streamDest != null
+  }
+
+  /** Where the graph's audio goes: the keep-alive stream when active, else the speakers. */
+  private outputNode(): AudioNode {
+    return this.streamDest ?? this.ctx!.destination
   }
 
   setSource(url: string): void {
@@ -139,7 +185,7 @@ export class BufferAudioEngine {
     src.loop = true
     src.loopStart = 0
     src.loopEnd = dur
-    src.connect(ctx.destination)
+    src.connect(this.outputNode())
     const when = ctxNow + SCHEDULE_AHEAD_SEC
     const startOffset = (((offset + SCHEDULE_AHEAD_SEC) % dur) + dur) % dur
     src.start(when, startOffset)
@@ -257,5 +303,11 @@ export class BufferAudioEngine {
   stop(): void {
     this.hardStopped = true
     this.stopSource()
+    if (this.sinkEl) {
+      this.sinkEl.pause()
+      this.sinkEl.srcObject = null
+      this.sinkEl = null
+    }
+    this.streamDest = null
   }
 }

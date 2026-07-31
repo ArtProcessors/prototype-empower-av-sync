@@ -45,6 +45,7 @@ export interface SyncApi {
   targetTime: number | null
   audioRouted: boolean // audio routed through Web Audio (ignores iOS mute switch)
   audioAutoLatencyMs: number // auto-measured output latency being compensated
+  audioBgKeepAlive: boolean // iOS lock-screen keep-alive sink active (?bg=1)
   // video selection (screen)
   videos: VideoOption[]
   videoId: string
@@ -246,6 +247,7 @@ export function useSync(): SyncApi {
     targetTime,
     audioRouted: audioRef.current?.routedThroughWebAudio ?? false,
     audioAutoLatencyMs: audioRef.current?.autoLatencyMs ?? 0,
+    audioBgKeepAlive: audioRef.current?.backgroundKeepAlive ?? false,
     videos: VIDEOS,
     videoId,
     setVideoId,

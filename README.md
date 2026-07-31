@@ -39,18 +39,24 @@ visible and audible: the click in your headphones should land on the flash on sc
 
 ## How the sync works
 
-- **`beat`** (screen → all, ~4×/sec): `{ videoTime, wall, playing, duration }` — where the
-  video is and the screen's wall-clock at that instant.
+- **`beat`** (screen → all, ~4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
+  which video is selected, where it is, and the screen's wall-clock at that instant.
 - **`clk`** (follower → screen RPC): estimates the **clock offset** between devices via
   Cristian's algorithm (`offset = tScreen − (t0+t2)/2`), keeping the lowest-RTT sample.
 - **Corrector** (~15 Hz on each follower): computes the screen's current position
-  `target = videoTime + (now + offset − wall)`, wrapped to the loop; measures loop-aware
-  `signedDrift(local, target)`; then **nudges `playbackRate`** (pitch preserved, 0.94–1.06)
-  to hold sync, **hard-seeking** only on large drift or a loop wrap.
+  `target = videoTime + (now + offset − wall)`, wrapped to the loop, and measures loop-aware
+  `signedDrift(local, target)`. It then steers one of two output engines onto that target:
+  - **Element (Android/desktop):** an `<audio>` element routed through Web Audio — small
+    drifts close by **nudging `playbackRate`** (pitch preserved, 0.97–1.03), large drifts
+    hard-seek.
+  - **Buffer (iOS):** Safari's media-element pipeline stalls >1 s on every seek, so the
+    follower plays a decoded `AudioBuffer` on the AudioContext clock instead — repositioning
+    is a sample-accurate source-node swap (no stall) and rate nudges are subtler (0.98–1.02).
 
 Pure, tested logic is in `src/sync/sync-math.ts`; transport in
 `src/transport/sync-controller.ts`; the follower audio corrector in
-`src/media/audio-sync-controller.ts`.
+`src/media/audio-sync-controller.ts`, with the iOS buffer engine in
+`src/media/buffer-audio-engine.ts`.
 
 ## Verification
 
@@ -100,6 +106,15 @@ Keep the audio a stream-copy of the video's own track so their timelines match e
   which plays regardless of the mute switch. The debug panel's `audio out` row shows
   `web-audio (mute-switch safe)` when this is active. AAC/m4a itself is natively supported
   on iOS — format is not the issue.
+- **Background / lock-screen playback:** iOS suspends the AudioContext when the screen
+  locks, which would kill the buffer engine. The follower therefore routes its buffer output
+  through a `MediaStreamAudioDestinationNode` played by an `<audio>` element registered as
+  the **MediaSession** — iOS keeps that element (and the graph feeding it) alive, so audio
+  keeps playing while locked (the debug panel's `bg keep-alive` row shows it's active).
+  Correction pauses while backgrounded (the ~15 Hz timer + WebRTC beats are throttled), so
+  playback free-runs on the context clock and resyncs on wake — fine for short locks, drifts
+  on long ones. A now-playing MediaSession card is registered on **all** platforms; Android
+  already sustains background audio natively so it needs no stream-sink routing.
 - **Automatic output-latency compensation (BYOD — no manual calibration):** what you *hear*
   trails `element.currentTime` by the device's output latency (~100–300 ms on iOS; Bluetooth
   adds even more). We measure it at runtime from `AudioContext.getOutputTimestamp()`
@@ -122,4 +137,3 @@ Keep the audio a stream-copy of the video's own track so their timelines match e
 - Large real videos (e.g. `soh`) are HEVC-transcoded to H.264 for browser compatibility and
   kept in git-ignored `public/media/`; `yarn build` copies them into `dist/` (large), while
   `yarn dev` serves them in place. The committed `test` clip is what stays offline-guaranteed.
-```

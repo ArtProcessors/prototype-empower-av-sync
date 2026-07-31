@@ -132,9 +132,13 @@ Scope boundaries of the current design (as opposed to defects):
   after backgrounding, which is the intended behaviour.
 - **One screen per room.** No concept of multiple synchronized screens sharing a leader
   clock (likely easy — they'd just be followers with video instead of audio — but unbuilt).
-- **Locked/backgrounded phones stop playing.** iOS suspends the AudioContext when the
-  screen locks or Safari backgrounds; the app resyncs on return but there is no
-  lock-screen/background playback (that would need different media-session plumbing).
+- **Locked/backgrounded playback free-runs, then resyncs.** iOS suspends the AudioContext
+  on lock, so the follower routes buffer output through a MediaStreamAudioDestinationNode
+  played by an <audio> element registered as the MediaSession — iOS keeps that element (and
+  thus the graph) alive, so audio continues while locked. But the ~15 Hz corrector's timer
+  and the WebRTC beats are throttled in the background, so playback free-runs on the context
+  clock (no drift correction) until the screen wakes and resyncs. Fine for short locks;
+  long locks drift until return. Android already sustains background audio natively.
 
 ## What's verified vs open
 
