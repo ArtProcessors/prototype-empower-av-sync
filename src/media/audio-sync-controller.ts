@@ -66,10 +66,16 @@ export class AudioSyncController {
   unlocked = false
 
   constructor() {
-    const el = new Audio(SYNTH_SOUNDTRACK_URL)
+    const el = new Audio()
+    // Must be set BEFORE the src loads: the element is routed through Web Audio
+    // (createMediaElementSource), and a cross-origin soundtrack loaded in no-CORS mode taints
+    // the graph → silent output. 'anonymous' makes it a CORS request (the media host sends
+    // Access-Control-Allow-Origin); harmless for same-origin sources.
+    el.crossOrigin = 'anonymous'
     el.loop = true
     el.preload = 'auto'
     el.preservesPitch = true
+    el.src = SYNTH_SOUNDTRACK_URL
     const anyEl = el as unknown as Record<string, unknown>
     anyEl.mozPreservesPitch = true
     anyEl.webkitPreservesPitch = true
@@ -85,10 +91,16 @@ export class AudioSyncController {
   }
 
   private fallbackToElement(): void {
+    // Bail only if the element is ALREADY the live output (neither buffer mode is engaged) —
+    // otherwise we're falling back from the buffer engine (either mid-playback OR while it was
+    // still decoding), and must repoint the element from the constructor's primer clip to the
+    // current soundtrack. The old `if (!this.useBuffer) return` skipped that repoint on a
+    // decode failure during the pending phase, leaving the element playing the TEST CLIP.
+    if (!this.useBuffer && !this.bufferUpgradePending) return
     this.bufferUpgradePending = false
-    if (!this.useBuffer) return // element is already (still) the active output
     this.useBuffer = false
-    this.el.src = this.currentUrl
+    this.el.src = this.currentUrl // the live soundtrack, not the primer's test clip
+    this.el.muted = false
     this.resetAfterSourceChange()
   }
 
@@ -180,7 +192,11 @@ export class AudioSyncController {
 
       this.el.pause()
       this.el.currentTime = 0
-      this.el.muted = false
+      // On iOS the element is ONLY a fallback and is never routed through Web Audio, so keep
+      // it muted until we actually fall back (fallbackToElement unmutes). iOS doesn't reliably
+      // honor the pause() above, so the primed test clip would otherwise keep looping audibly
+      // alongside the buffer engine once useBuffer takes over (correct() never re-pauses it).
+      if (!IS_IOS) this.el.muted = false
       // Now route to the output for real, audible playback.
       if (this.srcNode && this.ctx) this.srcNode.connect(this.ctx.destination)
       this.unlocked = true

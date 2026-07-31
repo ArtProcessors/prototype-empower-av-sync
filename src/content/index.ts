@@ -37,9 +37,9 @@ export const VIDEOS: VideoOption[] = [
   {
     id: "soh",
     label: "SOH Sync — Long (~15m, real content)",
-    videoUrl:
-      "https://content.dev.pladia.live/assets/playground/james/soh.mp4",
-    soundtrackUrl: "/media/soh.m4a",
+    videoUrl: "https://content.dev.pladia.live/assets/playground/james/soh.mp4",
+    soundtrackUrl:
+      "https://content.dev.pladia.live/assets/playground/james/soh.m4a",
   },
 ]
 

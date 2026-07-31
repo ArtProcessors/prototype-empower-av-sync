@@ -35,6 +35,8 @@ const RATE_MAX = 1.02
 const MAX_LATENCY_SEC = 0.5
 const LATENCY_EMA_ALPHA = 0.2
 const FALLBACK_LATENCY_SEC = 0.12 // iOS often reports no latency at all
+const DECLICK_SEC = 0.006 // gain dip around a source swap so the stop/start edge can't pop
+const UNMUTE_SEC = 0.03 // fade-in once we first reach lock (converge silently before that)
 
 export class BufferAudioEngine {
   private ctx: AudioContext | null = null
@@ -42,6 +44,10 @@ export class BufferAudioEngine {
   // and iOS keeps that element (and thus the graph) alive when the screen locks.
   private streamDest: MediaStreamAudioDestinationNode | null = null
   private sinkEl: HTMLAudioElement | null = null
+  // Master gain: sources route through this so swaps can be de-clicked, and so a cold
+  // (from-idle) convergence plays silently until it first locks — no audible seek thrash.
+  private masterGain: GainNode | null = null
+  private audible = false // has the current segment reached lock and faded in?
   private buffer: AudioBuffer | null = null
   private bufferUrl: string | null = null // url the decoded buffer belongs to
   private loadingUrl: string | null = null
@@ -89,6 +95,12 @@ export class BufferAudioEngine {
       } catch {
         this.streamDest = null // fall back to ctx.destination
       }
+    }
+    // Master gain all playback routes through (starts muted — first lock fades it in).
+    if (!this.masterGain) {
+      this.masterGain = this.ctx.createGain()
+      this.masterGain.gain.value = 0
+      this.masterGain.connect(this.outputNode())
     }
     // Prime output inside the gesture with a one-frame silent buffer.
     try {
@@ -157,14 +169,36 @@ export class BufferAudioEngine {
   }
 
   private stopSource(): void {
-    if (this.src) {
+    const src = this.src
+    this.src = null
+    if (!src) return
+    const g = this.masterGain?.gain
+    if (this.ctx && g) {
+      // Fade the output down before stopping so the cut can't pop, then retire the node.
+      const now = this.ctx.currentTime
+      g.cancelScheduledValues(now)
+      g.setValueAtTime(g.value, now)
+      g.linearRampToValueAtTime(0, now + DECLICK_SEC)
+      this.audible = false
       try {
-        this.src.stop()
+        src.stop(now + DECLICK_SEC)
       } catch {
         /* already stopped */
       }
-      this.src.disconnect()
-      this.src = null
+      src.onended = () => {
+        try {
+          src.disconnect()
+        } catch {
+          /* ignore */
+        }
+      }
+    } else {
+      try {
+        src.stop()
+      } catch {
+        /* already stopped */
+      }
+      src.disconnect()
     }
   }
 
@@ -174,21 +208,71 @@ export class BufferAudioEngine {
     return ((raw % dur) + dur) % dur
   }
 
+  /** Silence output immediately (cold starts converge silently until the first lock). */
+  private mute(): void {
+    this.audible = false
+    const g = this.masterGain?.gain
+    if (!g || !this.ctx) return
+    const now = this.ctx.currentTime
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(g.value, now)
+    g.linearRampToValueAtTime(0, now + DECLICK_SEC) // short ramp so muting can't pop either
+  }
+
+  /** Fade in on the first lock — called once drift is inside the deadband. */
+  private unmute(): void {
+    if (this.audible) return
+    this.audible = true
+    const g = this.masterGain?.gain
+    if (!g || !this.ctx) return
+    const now = this.ctx.currentTime
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(g.value, now)
+    g.linearRampToValueAtTime(1, now + UNMUTE_SEC)
+  }
+
+  /** Dip the master gain to 0 across a source swap so the stop/start edge can't pop. */
+  private declickSwap(when: number): void {
+    const g = this.masterGain?.gain
+    if (!g || !this.audible || !this.ctx) return // muted pre-lock: already at 0
+    const now = this.ctx.currentTime
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(1, Math.max(now, when - DECLICK_SEC))
+    g.linearRampToValueAtTime(0, when)
+    g.linearRampToValueAtTime(1, when + DECLICK_SEC)
+  }
+
   /** Swap in a fresh source node starting at `offset`, scheduled slightly ahead for exactness. */
   private startAt(offset: number, ctxNow: number): void {
     const ctx = this.ctx!
     const buf = this.buffer!
     const dur = buf.duration
-    this.stopSource()
     const src = ctx.createBufferSource()
     src.buffer = buf
     src.loop = true
     src.loopStart = 0
     src.loopEnd = dur
-    src.connect(this.outputNode())
+    src.connect(this.masterGain ?? this.outputNode())
     const when = ctxNow + SCHEDULE_AHEAD_SEC
     const startOffset = (((offset + SCHEDULE_AHEAD_SEC) % dur) + dur) % dur
     src.start(when, startOffset)
+    this.declickSwap(when)
+    // Retire the outgoing source at the swap point — its tail is already gain-dipped to 0.
+    const old = this.src
+    if (old) {
+      try {
+        old.stop(when + DECLICK_SEC)
+      } catch {
+        /* already stopped */
+      }
+      old.onended = () => {
+        try {
+          old.disconnect()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     this.src = src
     this.startCtxTime = when
     this.startOffset = startOffset
@@ -260,6 +344,9 @@ export class BufferAudioEngine {
     const aim = (((targetSec + this.measuredLatencySec) % dur) + dur) % dur
 
     if (!this.src) {
+      // Cold start: converge silently, then fade in on the first lock (see below) — this is
+      // what keeps the join/first-sync seek thrash from popping out as a "beeping" loop.
+      this.mute()
       this.startAt(aim, ctxNow)
       return { mode: 'seek', driftMs: 0, rate: 1 }
     }
@@ -277,6 +364,7 @@ export class BufferAudioEngine {
     }
 
     if (Math.abs(drift) < LOCK_DEADBAND_SEC) {
+      this.unmute() // in the deadband → locked; audible from here (no-op once already up)
       this.setRate(1, ctxNow)
       return {
         mode: (Math.abs(rawDrift) < LOCKED_SEC ? 'locked' : 'nudge') as CorrectionMode,
@@ -297,7 +385,9 @@ export class BufferAudioEngine {
   resync(): void {
     this.smoothedDriftSec = 0
     this.lastRestartAt = 0
-    this.stopSource() // next correct() restarts at the live target
+    // Fades out and drops audible; next correct() cold-starts and stays silent until re-lock,
+    // so a wake/resync re-converges without popping back in.
+    this.stopSource()
   }
 
   stop(): void {
