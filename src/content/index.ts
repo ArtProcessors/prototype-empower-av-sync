@@ -25,6 +25,12 @@ export interface VideoOption {
   label: string
   videoUrl: string // played by the screen
   soundtrackUrl: string // played by followers (extracted audio, same timeline)
+  /**
+   * Long-form audio: followers stream-decode a sliding window (WebCodecs) instead of
+   * decoding the whole file into one AudioBuffer. Whole-file decode is ~21 MB/min, so
+   * anything past a few minutes must use this to keep memory flat. See StreamingBufferEngine.
+   */
+  streaming?: boolean
 }
 
 export const VIDEOS: VideoOption[] = [
@@ -40,6 +46,16 @@ export const VIDEOS: VideoOption[] = [
     videoUrl: "https://content.dev.pladia.live/assets/playground/james/soh.mp4",
     soundtrackUrl:
       "https://content.dev.pladia.live/assets/playground/james/soh.m4a",
+      streaming: true,
+  },
+  {
+    id: "sync45",
+    label: "Sync test — Long (45m, streaming)",
+    videoUrl:
+      "https://content.dev.pladia.live/assets/playground/james/sync-test-45mins.mp4",
+    soundtrackUrl:
+      "https://content.dev.pladia.live/assets/playground/james/sync-test-45mins.m4a",
+    streaming: true,
   },
 ]
 

@@ -20,7 +20,7 @@
  * (MediaSession metadata itself is owned by AudioSyncController — it's cross-platform.)
  */
 import { signedDrift, correctionRate } from '../sync/sync-math'
-import type { CorrectionInfo, CorrectionMode } from './audio-sync-controller'
+import type { CorrectionInfo, CorrectionMode, FollowerAudioEngine } from './audio-sync-controller'
 
 const HARD_RESTART_SEC = 0.25 // reposition instead of nudging beyond this drift
 const RESTART_COOLDOWN_MS = 800 // keep repositions from thrashing
@@ -38,7 +38,7 @@ const FALLBACK_LATENCY_SEC = 0.12 // iOS often reports no latency at all
 const DECLICK_SEC = 0.006 // gain dip around a source swap so the stop/start edge can't pop
 const UNMUTE_SEC = 0.03 // fade-in once we first reach lock (converge silently before that)
 
-export class BufferAudioEngine {
+export class BufferAudioEngine implements FollowerAudioEngine {
   private ctx: AudioContext | null = null
   // Background keep-alive sink: the graph feeds this stream, an <audio> element plays it,
   // and iOS keeps that element (and thus the graph) alive when the screen locks.

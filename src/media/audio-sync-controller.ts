@@ -17,6 +17,10 @@
 import { SYNTH_SOUNDTRACK_URL } from '../content'
 import { signedDrift, correctionRate } from '../sync/sync-math'
 import { BufferAudioEngine } from './buffer-audio-engine'
+import { StreamingBufferEngine } from './streaming-buffer-engine'
+
+/** WebCodecs (iOS 16.4+) — required by the streaming engine; else long content falls back. */
+const WEBCODECS_OK = typeof AudioDecoder !== 'undefined'
 
 const HARD_SEEK_SEC = 0.6 // only snap on large drift; the nudge closes anything smaller
 const SEEK_COOLDOWN_MS = 8000 // keep hard seeks rare
@@ -43,6 +47,32 @@ export interface CorrectionInfo {
   rate: number
 }
 
+/**
+ * An AudioContext-clock output engine the controller can steer toward the screen's position.
+ * BufferAudioEngine (whole-file decode) and StreamingBufferEngine (windowed WebCodecs decode)
+ * both implement this, so the controller can pick per source without caring which is running.
+ */
+export interface FollowerAudioEngine {
+  unlock(): Promise<void>
+  resume(): void
+  setSource(url: string): void
+  hasBufferFor(url: string): boolean
+  correct(targetSec: number | null, playing: boolean): CorrectionInfo
+  resync(): void
+  stop(): void
+  readonly currentTimeSec: number
+  readonly duration: number
+  readonly autoLatencyMs: number
+  readonly backgroundKeepAlive: boolean
+  /**
+   * Called when the page is backgrounded / about to lock. Engines whose playback needs the
+   * (soon-to-be-throttled) correction timer to keep going should schedule enough audio ahead
+   * to survive the lock; those that free-run natively (whole-file loop) can ignore it.
+   */
+  enterBackground?(): void
+  exitBackground?(): void
+}
+
 export class AudioSyncController {
   private el: HTMLAudioElement
   private currentUrl: string
@@ -59,10 +89,15 @@ export class AudioSyncController {
   private seekSettleUntil = 0
   private needsInitialSync = true // snap to the live target on join/resync, however small the drift
   private measuredLatencySec = 0 // auto-measured output latency (see sampleOutputLatency)
+  // Advanced (AudioContext-clock) engines: buffer = whole-file decode (iOS, short content);
+  // stream = windowed WebCodecs decode (any platform, long content). `engine` points at the
+  // one selected for the current source, or null when the element path is the live output.
   private bufferEngine: BufferAudioEngine | null = null
+  private streamEngine: StreamingBufferEngine | null = null
+  private engine: FollowerAudioEngine | null = null
   private mediaSessionReady = false // lock-screen now-playing session wired (all platforms)
-  private useBuffer = false // buffer engine is the active output (iOS, once decoded)
-  private bufferUpgradePending = IS_IOS // element is bootstrapping while the buffer decodes
+  private engineActive = false // the selected engine is the live output (once loaded)
+  private enginePending = false // engine is loading; element/silent meanwhile
   unlocked = false
 
   constructor() {
@@ -81,36 +116,53 @@ export class AudioSyncController {
     anyEl.webkitPreservesPitch = true
     this.el = el
     this.currentUrl = SYNTH_SOUNDTRACK_URL
-    if (IS_IOS) {
-      this.bufferEngine = new BufferAudioEngine(() => this.fallbackToElement())
-    }
+    if (WEBCODECS_OK) this.streamEngine = new StreamingBufferEngine(() => this.fallbackToElement())
+    if (IS_IOS) this.bufferEngine = new BufferAudioEngine(() => this.fallbackToElement())
   }
 
-  private get bufferEngineWanted(): boolean {
-    return this.bufferEngine != null && (this.useBuffer || this.bufferUpgradePending)
+  private get engineWanted(): boolean {
+    return this.engine != null && (this.engineActive || this.enginePending)
+  }
+
+  /** Which engine should own a source: stream for long content, buffer on iOS, else element. */
+  private engineFor(streaming: boolean): FollowerAudioEngine | null {
+    if (streaming && this.streamEngine) return this.streamEngine
+    return IS_IOS ? this.bufferEngine : null
   }
 
   private fallbackToElement(): void {
-    // Bail only if the element is ALREADY the live output (neither buffer mode is engaged) —
-    // otherwise we're falling back from the buffer engine (either mid-playback OR while it was
-    // still decoding), and must repoint the element from the constructor's primer clip to the
-    // current soundtrack. The old `if (!this.useBuffer) return` skipped that repoint on a
-    // decode failure during the pending phase, leaving the element playing the TEST CLIP.
-    if (!this.useBuffer && !this.bufferUpgradePending) return
-    this.bufferUpgradePending = false
-    this.useBuffer = false
+    // Bail only if the element is ALREADY the live output (no engine engaged) — otherwise we're
+    // falling back from an engine (mid-playback OR while it was still loading), and must repoint
+    // the element from the constructor's primer clip to the current soundtrack. Skipping that
+    // repoint on a load failure during the pending phase would leave it playing the TEST CLIP.
+    if (!this.engineActive && !this.enginePending) return
+    this.engine = null
+    this.engineActive = false
+    this.enginePending = false
     this.el.src = this.currentUrl // the live soundtrack, not the primer's test clip
     this.el.muted = false
     this.resetAfterSourceChange()
   }
 
-  setSource(url: string): void {
+  setSource(url: string, streaming = false): void {
     if (!url) return
     const changed = url !== this.currentUrl
     this.currentUrl = url
-    if (this.bufferEngineWanted) this.bufferEngine!.setSource(url) // kicks download+decode
-    if (!this.bufferEngineWanted && changed) {
-      this.el.src = url // element streams (the active output on non-iOS / after fallback)
+    const want = this.engineFor(streaming)
+    if (want !== this.engine) {
+      this.engine?.correct(null, false) // stop the outgoing engine's playback
+      this.engine = want
+      this.engineActive = false
+      this.enginePending = want != null
+      if (!want) {
+        this.el.src = url // element becomes the live output
+        this.el.muted = false
+        this.resetAfterSourceChange()
+      }
+    }
+    if (this.engine) this.engine.setSource(url) // kicks download/decode
+    else if (changed) {
+      this.el.src = url
       this.resetAfterSourceChange()
     }
   }
@@ -124,22 +176,28 @@ export class AudioSyncController {
   }
 
   get currentTimeSec(): number {
-    if (this.useBuffer) return this.bufferEngine!.currentTimeSec
+    if (this.engineActive) return this.engine!.currentTimeSec
     return this.trackedSec || this.el.currentTime
   }
   get duration(): number {
-    if (this.useBuffer) return this.bufferEngine!.duration
+    if (this.engineActive) return this.engine!.duration
     return this.el.duration
   }
   get routedThroughWebAudio(): boolean {
-    return this.useBuffer || this.routed
+    return this.engineActive || this.routed
   }
   get autoLatencyMs(): number {
-    if (this.useBuffer) return this.bufferEngine!.autoLatencyMs
+    if (this.engineActive) return this.engine!.autoLatencyMs
     return this.outputLatencySec() * 1000
   }
   get backgroundKeepAlive(): boolean {
-    return this.bufferEngine?.backgroundKeepAlive ?? false
+    return this.engineActive && (this.engine?.backgroundKeepAlive ?? false)
+  }
+  /** Which output path is live — for the debug panel. */
+  get engineKind(): 'element' | 'buffer' | 'stream' | 'syncing' {
+    if (this.enginePending) return 'syncing'
+    if (this.engineActive) return this.engine === this.streamEngine ? 'stream' : 'buffer'
+    return 'element'
   }
 
   async unlock(): Promise<void> {
@@ -151,16 +209,16 @@ export class AudioSyncController {
     this.seekSettleUntil = 0
     this.needsInitialSync = true
     this.setupMediaSession() // lock-screen now-playing card (all platforms; must be in-gesture)
-    // iOS: unlock the buffer engine's context inside this gesture (idempotent — also
-    // clears its stopped state on re-join). The element below is primed too since it
-    // bootstraps playback while the buffer decodes and is the fallback if decode fails.
-    const bufferUnlock = this.bufferEngineWanted
-      ? this.bufferEngine!.unlock().catch(() => {
-          this.fallbackToElement()
-        })
-      : null
+    // Unlock BOTH engines inside this gesture (context creation + resume + sink play must be
+    // gesture-initiated on iOS), since which one we need isn't known until the first beat picks
+    // a source. Whichever is later selected is then already warm. Failures are non-fatal — the
+    // per-engine load path falls back to the element.
+    const engineUnlocks = [
+      this.streamEngine?.unlock().catch(() => {}),
+      this.bufferEngine?.unlock().catch(() => {}),
+    ].filter(Boolean) as Promise<void>[]
     if (this.unlocked) {
-      if (bufferUnlock) await bufferUnlock
+      await Promise.allSettled(engineUnlocks)
       return
     }
     try {
@@ -203,12 +261,21 @@ export class AudioSyncController {
     } catch {
       this.unlocked = true
     }
-    if (bufferUnlock) await bufferUnlock
+    await Promise.allSettled(engineUnlocks)
   }
 
   resume(): void {
-    if (this.bufferEngineWanted) this.bufferEngine!.resume()
+    if (this.engineWanted) this.engine!.resume()
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {})
+  }
+
+  /** Page hidden / about to lock: let the active engine schedule audio ahead to survive it. */
+  enterBackground(): void {
+    if (this.engineActive) this.engine?.enterBackground?.()
+  }
+  /** Page visible again: tear down any free-run scheduling; the caller then resyncs. */
+  exitBackground(): void {
+    if (this.engineActive) this.engine?.exitBackground?.()
   }
 
   /**
@@ -328,12 +395,12 @@ export class AudioSyncController {
   }
 
   correct(targetSec: number | null, playing: boolean): CorrectionInfo {
-    if (this.bufferUpgradePending) {
-      if (this.bufferEngine!.hasBufferFor(this.currentUrl)) {
-        // Decoded soundtrack just became available — the buffer engine takes over
+    if (this.enginePending) {
+      if (this.engine!.hasBufferFor(this.currentUrl)) {
+        // Decoded/demuxed soundtrack just became available — the engine takes over
         // (it snaps straight onto the live target on its first tick).
-        this.bufferUpgradePending = false
-        this.useBuffer = true
+        this.enginePending = false
+        this.engineActive = true
       } else {
         // Stay silent while downloading/decoding rather than limping along on the
         // stuttery element pipeline; the UI shows this as "syncing".
@@ -341,7 +408,7 @@ export class AudioSyncController {
         return { mode: 'syncing', driftMs: 0, rate: 1 }
       }
     }
-    if (this.useBuffer) return this.bufferEngine!.correct(targetSec, playing)
+    if (this.engineActive) return this.engine!.correct(targetSec, playing)
     if (this.hardStopped) {
       if (!this.el.paused) this.el.pause()
       return { mode: 'idle', driftMs: 0, rate: 1 }
@@ -420,8 +487,8 @@ export class AudioSyncController {
   }
 
   resync(): void {
-    if (this.useBuffer) {
-      this.bufferEngine!.resync()
+    if (this.engineActive) {
+      this.engine!.resync()
       return
     }
     this.smoothedDriftSec = 0
@@ -434,6 +501,7 @@ export class AudioSyncController {
 
   stop(): void {
     this.bufferEngine?.stop()
+    this.streamEngine?.stop()
     this.teardownMediaSession()
     this.hardStopped = true
     this.el.pause()

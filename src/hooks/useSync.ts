@@ -45,7 +45,8 @@ export interface SyncApi {
   targetTime: number | null
   audioRouted: boolean // audio routed through Web Audio (ignores iOS mute switch)
   audioAutoLatencyMs: number // auto-measured output latency being compensated
-  audioBgKeepAlive: boolean // iOS lock-screen keep-alive sink active (?bg=1)
+  audioBgKeepAlive: boolean // iOS lock-screen keep-alive sink active
+  audioEngine: 'element' | 'buffer' | 'stream' | 'syncing' // active follower output path
   // video selection (screen)
   videos: VideoOption[]
   videoId: string
@@ -137,7 +138,8 @@ export function useSync(): SyncApi {
       let target: number | null = null
       let playing = false
       if (beat && st.screenOnline && st.clockReady && now - st.lastBeatAt < BEAT_FRESH_MS) {
-        audio.setSource(videoById(beat.mediaId).soundtrackUrl) // load the matching audio
+        const media = videoById(beat.mediaId)
+        audio.setSource(media.soundtrackUrl, media.streaming) // load the matching audio
         target = computeTarget(beat, st.offsetMs, now)
         playing = beat.playing
       }
@@ -158,9 +160,12 @@ export function useSync(): SyncApi {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         if (controller.role === 'screen') screenWasPlaying = !video.paused
+        // Follower: schedule audio ahead so a streaming engine survives the lock/throttle.
+        else audio.enterBackground()
         return
       }
       if (controller.role === 'follower') {
+        audio.exitBackground()
         audio.resume()
         audio.resync()
         syncEpochRef.current = controller.getState().syncEpoch
@@ -248,6 +253,7 @@ export function useSync(): SyncApi {
     audioRouted: audioRef.current?.routedThroughWebAudio ?? false,
     audioAutoLatencyMs: audioRef.current?.autoLatencyMs ?? 0,
     audioBgKeepAlive: audioRef.current?.backgroundKeepAlive ?? false,
+    audioEngine: audioRef.current?.engineKind ?? 'element',
     videos: VIDEOS,
     videoId,
     setVideoId,
