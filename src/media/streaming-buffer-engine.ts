@@ -154,6 +154,9 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   private rate = 1
   private smoothedDriftSec = 0
   private lastRestartAt = 0
+  // Measured output latency for the DIRECT (ctx.destination) path. The sink path's latency is this
+  // plus SINK_SWITCH_LATENCY_SEC — see activeLatencySec. Keeping them separate matters because the
+  // physical latency changes the instant we switch paths, while an EMA can only crawl.
   private measuredLatencySec = 0
   private hardStopped = false
   // Bumped on every graph transition (background enter/exit, resync, stop). Async decodes and
@@ -167,6 +170,9 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   private chained: AudioBufferSourceNode[] = []
   private chainEndsAtCtx = 0 // context time the scheduled chain runs out (0 = no chain)
   private freeRunRate = 1 // rate the chain was scheduled at (measured clock ratio)
+  // Steady-state rate to hold when locked: the measured screen:device clock ratio. Persists across
+  // sleeps and estimator resets, so we never snap back to a 1.0 we know to be wrong.
+  private holdRate = 1
   // Clock-ratio estimator state (see recordClockRatioSample).
   private ratioSamples: { x: number; y: number }[] = []
   private ratioAccum = -1 // unwrapped target seconds (-1 = not started)
@@ -642,12 +648,16 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     }
   }
 
-  /** Least-squares slope of target-seconds per context-second (1 = clocks agree). */
-  private estimateClockRatio(): number {
+  /**
+   * Least-squares slope of target-seconds per context-second (1 = clocks agree). Returns null when
+   * there isn't enough clean data to trust — callers then keep the last good value (`holdRate`)
+   * rather than snapping to 1.0, which would re-introduce drift.
+   */
+  private estimateClockRatio(): number | null {
     const s = this.ratioSamples
-    if (s.length < 20) return 1
+    if (s.length < 20) return null
     const span = s[s.length - 1].x - s[0].x
-    if (span < RATIO_MIN_SPAN_SEC) return 1
+    if (span < RATIO_MIN_SPAN_SEC) return null
     let sx = 0
     let sy = 0
     for (const p of s) {
@@ -662,15 +672,19 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       num += (p.x - mx) * (p.y - my)
       den += (p.x - mx) * (p.x - mx)
     }
-    if (den <= 0) return 1
+    if (den <= 0) return null
     const slope = num / den
-    if (!isFinite(slope)) return 1
+    if (!isFinite(slope)) return null
     return Math.min(1 + RATIO_MAX_DEV, Math.max(1 - RATIO_MAX_DEV, slope))
   }
 
   private sampleOutputLatency(): void {
     const ctx = this.ctx
     if (!ctx) return
+    // Non-iOS only samples while on the DIRECT path. getOutputTimestamp can't see the <audio>
+    // element's own buffering, so readings taken while on the sink describe the direct path
+    // anyway — folding them in would just add noise to the base we add the sink offset to.
+    if (!IS_IOS && this.usingSink) return
     let L: number | null = null
     const g = ctx.getOutputTimestamp?.()
     if (g && typeof g.contextTime === 'number' && g.contextTime > 0) {
@@ -688,8 +702,21 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       : L
   }
 
+  /**
+   * Output latency for the path that is live RIGHT NOW. This must step the instant we re-route,
+   * because the physical delay does: the sink adds the <audio> element's buffering on top of the
+   * direct path. Feeding the corrector a slow EMA across a switch made `aim` crawl while the
+   * position skip jumped, so drift built up, got nudged hard, overshot, and only then settled —
+   * the "too slow, then too fast, then correct" handover. iOS is always on the sink and measures
+   * it directly, so it keeps the single measured value unchanged.
+   */
+  private get activeLatencySec(): number {
+    if (IS_IOS) return this.measuredLatencySec
+    return this.usingSink ? this.measuredLatencySec + SINK_SWITCH_LATENCY_SEC : this.measuredLatencySec
+  }
+
   get autoLatencyMs(): number {
-    return this.measuredLatencySec * 1000
+    return this.activeLatencySec * 1000
   }
 
   get currentTimeSec(): number {
@@ -717,8 +744,8 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       }
       const total = this.totalSec
       const pos = ((this.positionSec(this.ctx.currentTime) % total) + total) % total
-      const aim = (((targetSec + this.measuredLatencySec) % total) + total) % total
-      return { mode: 'locked', driftMs: signedDrift(pos, aim, total) * 1000, rate: 1 }
+      const aim = (((targetSec + this.activeLatencySec) % total) + total) % total
+      return { mode: 'locked', driftMs: signedDrift(pos, aim, total) * 1000, rate: this.freeRunRate }
     }
     if (!this.ctx || !this.table || this.totalSec <= 0) {
       if (this.desiredUrl) this.setSource(this.desiredUrl)
@@ -740,8 +767,10 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     this.sampleOutputLatency()
     const total = this.totalSec
     const ctxNow = this.ctx.currentTime
-    const aim = (((targetSec + this.measuredLatencySec) % total) + total) % total
+    const aim = (((targetSec + this.activeLatencySec) % total) + total) % total
     this.recordClockRatioSample(targetSec, ctxNow) // keep the clock-ratio estimate fresh
+    const ratio = this.estimateClockRatio()
+    if (ratio != null) this.holdRate = ratio
 
     // Install a freshly decoded window if one arrived, then make sure a decode is in flight
     // if nothing covers the aim yet.
@@ -775,7 +804,11 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       const when = ctxNow + SCHEDULE_AHEAD_SEC
       this.startAt(aim, w, ctxNow, false)
       this.stopChain(when + DECLICK_SEC)
-      return { mode: 'seek', driftMs: 0, rate: 1 }
+      // Resume at the last known-good clock ratio rather than a blind 1.0. The estimator's window
+      // was reset by the sleep gap, so it reports 1.0 for the next ~20 s — starting at 1.0 would
+      // re-introduce the very drift the corrector then has to chase out (slow, nudge, overshoot).
+      this.forceRate(this.freeRunRate, ctxNow)
+      return { mode: 'seek', driftMs: 0, rate: this.freeRunRate }
     }
 
     if (!this.src) {
@@ -812,11 +845,14 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
 
     if (Math.abs(drift) < LOCK_DEADBAND_SEC) {
       this.unmute()
-      this.setRate(1, ctxNow)
+      // Hold the measured clock ratio, not 1.0. Snapping to 1.0 inside the deadband guaranteed
+      // drift re-accumulated at the clocks' ppm difference until it escaped the band and got
+      // nudged — a slow sawtooth that reads as "settles, drifts, gets bumped, settles".
+      this.setRate(this.holdRate, ctxNow)
       return {
         mode: (Math.abs(rawDrift) < LOCKED_SEC ? 'locked' : 'nudge') as CorrectionMode,
         driftMs: rawDrift * 1000,
-        rate: 1,
+        rate: this.rate,
       }
     }
 
@@ -861,7 +897,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     this.backgrounded = true
     // Free-run at the MEASURED screen:device clock ratio, not a blind 1.0 — and force it exactly
     // (setRate's deadband would otherwise leave up to 0.2% of residual nudge rate in place).
-    this.freeRunRate = this.estimateClockRatio()
+    this.freeRunRate = this.holdRate
     this.forceRate(this.freeRunRate, ctxNow)
     // Android/desktop play through the speakers in the foreground; route to the keep-alive sink
     // now so audio survives the lock (iOS is always on the sink already), and skip content
