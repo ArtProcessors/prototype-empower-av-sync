@@ -82,6 +82,30 @@ const BACKGROUND_RUNWAY_SEC = (() => {
  */
 const LATENCY_SETTLE_SEC = 4
 
+/**
+ * Gain of the always-on tap feeding the keep-alive <audio> element while the audible output is the
+ * direct path (non-iOS foreground).
+ *
+ * Chrome on Android does not freeze a page that is actively playing audio. On the whole-file path
+ * the <audio> element IS the output, so it plays unbroken across a screen sleep and the page — with
+ * its timers and its WebRTC connection — stays alive. Routing straight to ctx.destination gave us
+ * clean foreground audio but left no playing element, so the page froze and the peer connection
+ * died with it. Feeding the element a continuous, far-below-audible copy keeps Chrome's
+ * "playing audio" state true for the whole session without putting the sink's buffering in the
+ * audible path. Must stay above Chrome's silence threshold to count, hence not simply 0.
+ * Tune on-device with `?kagain=0.01` (0 disables the tap entirely).
+ */
+const KEEPALIVE_GAIN = (() => {
+  if (typeof location !== 'undefined') {
+    const m = /[?&]kagain=([0-9.]+)/.exec(location.search)
+    if (m) {
+      const v = parseFloat(m[1])
+      if (isFinite(v) && v >= 0 && v <= 1) return v
+    }
+  }
+  return 0.005
+})()
+
 // iOS needs the MediaStream sink for foreground output too (mute-switch bypass + lock-screen
 // keep-alive), and it's smooth there. Android/desktop route straight to the speakers in the
 // foreground — the sink's extra buffering there causes latency/jitter/rough swaps — and only
@@ -138,6 +162,11 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   private streamDest: MediaStreamAudioDestinationNode | null = null
   private sinkEl: HTMLAudioElement | null = null
   private masterGain: GainNode | null = null
+  // Output mix: masterGain feeds BOTH legs permanently and we cross-fade between them, rather than
+  // disconnecting/reconnecting. The sink leg is never fully off (see KEEPALIVE_GAIN) so its <audio>
+  // element keeps playing for the whole session and Chrome never freezes the page.
+  private directGain: GainNode | null = null
+  private sinkGain: GainNode | null = null
   private audible = false
 
   // Demux state: only the sample table (byte offsets/timing) is kept; sample DATA is
@@ -222,9 +251,19 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       }
     }
     if (!this.masterGain) {
-      this.masterGain = this.ctx.createGain()
+      const ctx = this.ctx
+      this.masterGain = ctx.createGain()
       this.masterGain.gain.value = 0
-      this.connectOutput(IS_IOS) // iOS → sink; Android/desktop → straight to the speakers
+      // Wire both output legs once and keep them wired; connectOutput only changes their gains.
+      this.directGain = ctx.createGain()
+      this.masterGain.connect(this.directGain)
+      this.directGain.connect(ctx.destination)
+      if (this.streamDest) {
+        this.sinkGain = ctx.createGain()
+        this.masterGain.connect(this.sinkGain)
+        this.sinkGain.connect(this.streamDest)
+      }
+      this.connectOutput(IS_IOS) // iOS → sink; Android/desktop → speakers + keep-alive tap
     }
     try {
       const silent = this.ctx.createBuffer(1, 1, this.ctx.sampleRate)
@@ -253,20 +292,28 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   private outputNode(): AudioNode {
-    return this.usingSink ? (this.streamDest ?? this.ctx!.destination) : this.ctx!.destination
+    return this.masterGain ?? this.ctx!.destination
   }
 
-  /** Point the master gain at the speakers (foreground) or the keep-alive sink (background). */
+  /**
+   * Choose which leg is *audible*: the speakers (foreground) or the keep-alive sink (background).
+   * The sink leg is never taken to zero — it stays at KEEPALIVE_GAIN so its <audio> element keeps
+   * playing continuously, which is what stops Chrome freezing the page (and killing WebRTC with it).
+   * Cross-fading gains rather than re-connecting also avoids a click at the switch.
+   */
   private connectOutput(useSink: boolean): void {
-    if (!this.masterGain || !this.ctx) return
-    const target = useSink && this.streamDest ? this.streamDest : this.ctx.destination
-    try {
-      this.masterGain.disconnect()
-    } catch {
-      /* not connected */
+    if (!this.ctx || !this.directGain) return
+    const sink = useSink && this.streamDest != null
+    const t = this.ctx.currentTime
+    const ramp = (g: GainNode | null, to: number) => {
+      if (!g) return
+      g.gain.cancelScheduledValues(t)
+      g.gain.setValueAtTime(g.gain.value, t)
+      g.gain.linearRampToValueAtTime(to, t + DECLICK_SEC)
     }
-    this.masterGain.connect(target)
-    this.usingSink = useSink && this.streamDest != null
+    ramp(this.directGain, sink ? 0 : 1)
+    ramp(this.sinkGain, sink ? 1 : KEEPALIVE_GAIN)
+    this.usingSink = sink
   }
 
   // ─── Load: fetch ONLY the moov and build the sample table (data is range-fetched per window) ───
