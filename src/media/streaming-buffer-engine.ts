@@ -68,11 +68,19 @@ const BACKGROUND_RUNWAY_SEC = (() => {
     const m = /[?&]runway=([0-9.]+)/.exec(location.search)
     if (m) {
       const v = parseFloat(m[1])
-      if (isFinite(v) && v >= 30 && v <= 600) return v
+      if (isFinite(v) && v >= 30 && v <= 900) return v
     }
   }
-  return 120
+  return 180
 })()
+
+/**
+ * After a wake the platform's reported output latency is unreliable for a few seconds (buffers
+ * refill, the context has just resumed). Feeding those readings into `aim` makes the target crawl,
+ * and the corrector chases it — the "too slow, then bumped up, then too fast" handover. So hold the
+ * pre-sleep estimate, measured under stable conditions, until things settle.
+ */
+const LATENCY_SETTLE_SEC = 4
 
 // iOS needs the MediaStream sink for foreground output too (mute-switch bypass + lock-screen
 // keep-alive), and it's smooth there. Android/desktop route straight to the speakers in the
@@ -169,6 +177,9 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   private backgrounded = false
   private chained: AudioBufferSourceNode[] = []
   private chainEndsAtCtx = 0 // context time the scheduled chain runs out (0 = no chain)
+  private chainTrackEnd = 0 // track-sec the chain currently covers up to (for top-ups)
+  private chainBuilding = false // guards buildChain against overlapping runs
+  private latencyHoldUntilCtx = 0 // suppress latency re-estimation until this context time
   private freeRunRate = 1 // rate the chain was scheduled at (measured clock ratio)
   // Steady-state rate to hold when locked: the measured screen:device clock ratio. Persists across
   // sleeps and estimator resets, so we never snap back to a 1.0 we know to be wrong.
@@ -685,6 +696,9 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     // element's own buffering, so readings taken while on the sink describe the direct path
     // anyway — folding them in would just add noise to the base we add the sink offset to.
     if (!IS_IOS && this.usingSink) return
+    // Post-wake: keep the pre-sleep estimate rather than tracking unreliable readings (see
+    // LATENCY_SETTLE_SEC). A moving `aim` is indistinguishable from real drift to the corrector.
+    if (ctx.currentTime < this.latencyHoldUntilCtx) return
     let L: number | null = null
     const g = ctx.getOutputTimestamp?.()
     if (g && typeof g.contextTime === 'number' && g.contextTime > 0) {
@@ -911,13 +925,34 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   private async buildChain(fromTrackSec: number, untilCtxTime: number): Promise<void> {
+    if (this.chainBuilding) return
+    this.chainBuilding = true
+    try {
+      await this.buildChainInner(fromTrackSec, untilCtxTime)
+    } finally {
+      this.chainBuilding = false
+    }
+  }
+
+  /**
+   * Top up the runway when a chained source finishes. `onended` is delivered from the audio thread
+   * rather than a timer, so it can still arrive on a throttled page — best-effort, but when it does
+   * fire the chain extends itself and sleep playback continues past the initial runway.
+   */
+  private extendChain(): void {
+    if (!this.backgrounded || !this.ctx || this.chainBuilding) return
+    void this.buildChain(this.chainTrackEnd, this.ctx.currentTime + BACKGROUND_RUNWAY_SEC)
+  }
+
+  private async buildChainInner(fromTrackSec: number, untilCtxTime: number): Promise<void> {
     const gen = this.gen
     const rate = this.freeRunRate
     let trackCursor = fromTrackSec
     // Context time the playing source reaches `fromTrackSec` — content advances at `rate` per
     // context second, so the elapsed CONTEXT time is the content delta divided by the rate.
     let ctxCursor = this.startCtxTime + (fromTrackSec - this.startOffset) / rate
-    this.chainEndsAtCtx = ctxCursor
+    if (this.chained.length === 0) this.chainEndsAtCtx = ctxCursor
+    if (this.chainTrackEnd < trackCursor) this.chainTrackEnd = trackCursor
     while (this.backgrounded && this.gen === gen && ctxCursor < untilCtxTime && trackCursor < this.totalSec - 0.05) {
       const w = await this.decodeWindow(trackCursor)
       if (!w || !this.backgrounded || this.gen !== gen || !this.ctx || this.desiredUrl !== this.demuxedUrl) break
@@ -935,11 +970,17 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
         } catch {
           /* ignore */
         }
+        const i = this.chained.indexOf(src)
+        if (i >= 0) this.chained.splice(i, 1)
+        this.extendChain() // keep the runway ahead of the playhead while still asleep
       }
       this.chained.push(src)
       trackCursor += playSec
       ctxCursor += playSec / rate
       this.chainEndsAtCtx = ctxCursor
+      // Must advance with the loop: extendChain() resumes from here, and leaving it at the initial
+      // value made a top-up re-schedule the SAME windows on top of the existing ones.
+      this.chainTrackEnd = trackCursor
     }
   }
 
@@ -953,6 +994,9 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     if (!this.backgrounded) return
     this.backgrounded = false
     this.gen++ // invalidate any in-flight chain decode so it can't schedule after we reset
+    // Hold the latency estimate: readings are unreliable for a few seconds after a wake, and a
+    // moving `aim` reads as drift to the corrector (the rough handover). See LATENCY_SETTLE_SEC.
+    if (this.ctx) this.latencyHoldUntilCtx = this.ctx.currentTime + LATENCY_SETTLE_SEC
     // Back to the speakers for clean foreground output (iOS stays on the sink). The chain and the
     // primary source follow the master gain, so they move with it.
     if (!IS_IOS && this.usingSink) this.connectOutput(false)
@@ -967,18 +1011,27 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   private stopChain(when?: number): void {
     if (this.chained.length === 0) {
       this.chainEndsAtCtx = 0
+      this.chainTrackEnd = 0
       return
     }
-    for (const s of this.chained) {
+    const doomed = this.chained
+    this.chained = [] // clear first so the sources' onended can't re-extend a chain we're killing
+    for (const s of doomed) {
+      s.onended = null
       try {
         if (when != null) s.stop(when)
         else s.stop()
       } catch {
         /* already stopped */
       }
+      try {
+        if (when == null) s.disconnect()
+      } catch {
+        /* ignore */
+      }
     }
-    this.chained = []
     this.chainEndsAtCtx = 0
+    this.chainTrackEnd = 0
   }
 
   /** Is pre-scheduled chain audio still sounding right now? */
