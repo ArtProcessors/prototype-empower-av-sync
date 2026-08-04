@@ -24,6 +24,18 @@ import {
 
 const CORRECT_MS = 66 // ~15 Hz correction loop
 const BEAT_FRESH_MS = 3000
+const REJOIN_KEY = 'empower.rejoinRoom' // sessionStorage: room to offer re-joining after a reload
+const TRANSPORT_STALE_MS = 6000 // no beats for this long → the WebRTC link is presumed dead
+const RECONNECT_COOLDOWN_MS = 10000 // min gap between transport rejoin attempts
+
+/** The room a listener was in before a reload/tab-discard, if any — for a one-tap rejoin. */
+export function readRejoinRoom(): string | null {
+  try {
+    return sessionStorage.getItem(REJOIN_KEY)
+  } catch {
+    return null
+  }
+}
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 function makeRoomCode(len = 4): string {
@@ -108,6 +120,9 @@ export function useSync(): SyncApi {
   if (!audioRef.current) audioRef.current = new AudioSyncController()
   const syncEpochRef = useRef(0)
   const clockReadyRef = useRef(false)
+  const roomRef = useRef<string | null>(null) // room we're in, for transport reconnects
+  const reconnectingRef = useRef(false)
+  const lastReconnectAtRef = useRef(0)
 
   useEffect(() => {
     if (!controller) return
@@ -149,6 +164,48 @@ export function useSync(): SyncApi {
     }, CORRECT_MS) as unknown as number
     return () => clearInterval(id)
   }, [controller])
+
+  /**
+   * Rebuild the transport in place, keeping audio running. Android tears the WebRTC peer
+   * connection (and its signaling socket) down during sleep and it does not always come back — the
+   * follower then sits on a stale room receiving no beats. Rejoining is the only reliable recovery.
+   * This deliberately does NOT touch the audio engine: no gesture is needed (the AudioContext is
+   * already unlocked) and the streaming engine free-runs on its pre-scheduled chain, so playback
+   * continues across the reconnect.
+   */
+  const reconnectTransport = useCallback(async () => {
+    const code = roomRef.current
+    if (!code || reconnectingRef.current) return
+    reconnectingRef.current = true
+    lastReconnectAtRef.current = Date.now()
+    try {
+      // Leave first — rejoining the same room while the dead session lingers can collide.
+      await controller?.leave().catch(() => {})
+      const c = await joinAsFollower(code)
+      syncEpochRef.current = c.getState().syncEpoch
+      clockReadyRef.current = c.getState().clockReady
+      setController(c)
+    } catch {
+      /* try again on the next watchdog tick */
+    } finally {
+      reconnectingRef.current = false
+    }
+  }, [controller])
+
+  // Transport watchdog (follower): if beats have stopped for a while — the usual outcome of an
+  // Android sleep — rejoin the room. Throttled so we don't thrash while genuinely offline.
+  useEffect(() => {
+    if (!controller || controller.role !== 'follower') return
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible' || reconnectingRef.current) return
+      const st = controller.getState()
+      const stale = st.lastBeatAt > 0 && Date.now() - st.lastBeatAt > TRANSPORT_STALE_MS
+      if ((stale || !st.screenOnline) && Date.now() - lastReconnectAtRef.current > RECONNECT_COOLDOWN_MS) {
+        void reconnectTransport()
+      }
+    }, 1000) as unknown as number
+    return () => clearInterval(id)
+  }, [controller, reconnectTransport])
 
   // Resume media after sleep / tab backgrounding (iOS suspends Web Audio + video).
   useEffect(() => {
@@ -214,9 +271,18 @@ export function useSync(): SyncApi {
     setPhase('connecting')
     try {
       await audioRef.current!.unlock() // play() fired inside the gesture
-      const c = await joinAsFollower(code.trim().toUpperCase())
+      const room = code.trim().toUpperCase()
+      roomRef.current = room // enables the transport watchdog to rejoin after a sleep
+      const c = await joinAsFollower(room)
       syncEpochRef.current = c.getState().syncEpoch
       clockReadyRef.current = c.getState().clockReady
+      // Remember the room so a background tab-discard + reload can offer a one-tap rejoin
+      // (audio still needs the tap, so we can't fully auto-rejoin).
+      try {
+        sessionStorage.setItem(REJOIN_KEY, room)
+      } catch {
+        /* storage may be unavailable */
+      }
       setController(c)
       setPhase('active')
     } catch (e) {
@@ -226,6 +292,12 @@ export function useSync(): SyncApi {
   }, [])
 
   const leave = useCallback(async () => {
+    roomRef.current = null // stop the watchdog from resurrecting the session
+    try {
+      sessionStorage.removeItem(REJOIN_KEY) // deliberate leave — don't offer rejoin
+    } catch {
+      /* ignore */
+    }
     audioRef.current?.stop()
     videoRef.current?.pause()
     await controller?.leave()
