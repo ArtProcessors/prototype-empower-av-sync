@@ -26,7 +26,8 @@ const CORRECT_MS = 66 // ~15 Hz correction loop
 const BEAT_FRESH_MS = 3000
 const REJOIN_KEY = 'empower.rejoinRoom' // sessionStorage: room to offer re-joining after a reload
 const TRANSPORT_STALE_MS = 6000 // no beats for this long → the WebRTC link is presumed dead
-const RECONNECT_COOLDOWN_MS = 10000 // min gap between transport rejoin attempts
+const RECONNECT_COOLDOWN_MS = 10000 // min gap between transport rejoin attempts (visible)
+const HIDDEN_RECONNECT_COOLDOWN_MS = 45000 // slower retries while asleep (Doze refuses most anyway)
 
 /** The room a listener was in before a reload/tab-discard, if any — for a one-tap rejoin. */
 export function readRejoinRoom(): string | null {
@@ -192,15 +193,26 @@ export function useSync(): SyncApi {
     }
   }, [controller])
 
-  // Transport watchdog (follower): if beats have stopped for a while — the usual outcome of an
-  // Android sleep — rejoin the room. Throttled so we don't thrash while genuinely offline.
+  /**
+   * Transport watchdog (follower): if beats have stopped, rejoin the room.
+   *
+   * This also runs while the page is HIDDEN. Android Doze throttles the network a few minutes into
+   * a screen-off, and WebRTC drops the peer connection when its consent-freshness checks fail — so
+   * the listener silently disappears from the screen's peer count and stops receiving beats even
+   * though audio keeps free-running. The keep-alive tap means the page itself is still alive and
+   * can retry, so we do, just far less often than when visible (battery, and Doze will refuse
+   * most attempts anyway — but it recovers on Doze's maintenance windows instead of waiting for
+   * the user to wake the phone).
+   */
   useEffect(() => {
     if (!controller || controller.role !== 'follower') return
     const id = setInterval(() => {
-      if (document.visibilityState !== 'visible' || reconnectingRef.current) return
+      if (reconnectingRef.current) return
+      const hidden = document.visibilityState !== 'visible'
+      const cooldown = hidden ? HIDDEN_RECONNECT_COOLDOWN_MS : RECONNECT_COOLDOWN_MS
       const st = controller.getState()
       const stale = st.lastBeatAt > 0 && Date.now() - st.lastBeatAt > TRANSPORT_STALE_MS
-      if ((stale || !st.screenOnline) && Date.now() - lastReconnectAtRef.current > RECONNECT_COOLDOWN_MS) {
+      if ((stale || !st.screenOnline) && Date.now() - lastReconnectAtRef.current > cooldown) {
         void reconnectTransport()
       }
     }, 1000) as unknown as number
@@ -225,7 +237,12 @@ export function useSync(): SyncApi {
         audio.exitBackground()
         audio.resume()
         audio.resync()
-        syncEpochRef.current = controller.getState().syncEpoch
+        const st = controller.getState()
+        syncEpochRef.current = st.syncEpoch
+        // Rejoin straight away if the link died during the sleep, instead of waiting out the
+        // watchdog's staleness window — the user is looking at the screen now.
+        const stale = st.lastBeatAt > 0 && Date.now() - st.lastBeatAt > TRANSPORT_STALE_MS
+        if (stale || !st.screenOnline) void reconnectTransport()
       } else if (screenWasPlaying) {
         void video.play().catch(() => {})
       }
@@ -233,7 +250,7 @@ export function useSync(): SyncApi {
 
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [controller])
+  }, [controller, reconnectTransport])
 
   const becomeScreen = useCallback(async () => {
     setError(null)
