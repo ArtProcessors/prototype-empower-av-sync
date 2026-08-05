@@ -109,11 +109,23 @@ re-routed, rather than being folded into an EMA that could only crawl.
   samples, ≥ 20 s span, clamped to ±0.5 %) estimates the two crystals' ppm difference; the
   chain is scheduled at that rate, and the same rate is *held inside the lock deadband*
   instead of snapping to 1.0 — which used to guarantee a slow drift-then-nudge sawtooth.
-- **Output routing switches with the lifecycle.** iOS always plays through a
-  `MediaStreamAudioDestinationNode` → `<audio>` sink (mute-switch bypass and lock-screen
-  keep-alive); Android/desktop play straight to the speakers in the foreground and switch to
-  the sink only when backgrounded, skipping content forward by the sink's added latency at the
-  switch so the audio doesn't step behind the still-playing screen.
+- **The keep-alive `<audio>` element is now always playing — that's what keeps the page (and
+  the WebRTC connection) alive.** Chrome on Android doesn't freeze a page that is actively
+  playing audio. The old whole-file path got this for free because the `<audio>` element *was*
+  the output; routing the streaming engine straight to `ctx.destination` gave clean foreground
+  audio but left no playing element, so Android froze the page a few minutes into a sleep and
+  the peer connection died with it. The output stage is therefore a permanent split —
+  `masterGain` feeds both a direct leg (`ctx.destination`) and a sink leg
+  (`MediaStreamAudioDestinationNode` → `<audio>`) — and the sink leg is **never taken to zero**:
+  it idles at a far-below-audible `KEEPALIVE_GAIN` (0.005, i.e. ~46 dB down, tunable with
+  `?kagain=`) so Chrome's "playing audio" state stays true for the whole session without putting
+  the sink's buffering in the audible path.
+- **Output routing is a cross-fade, not a re-connect.** iOS keeps the sink leg audible
+  throughout (mute-switch bypass and lock-screen keep-alive); Android/desktop hold the direct
+  leg audible in the foreground and ramp the two legs over 6 ms when backgrounding, skipping
+  content forward by the sink's added latency at the switch so the audio doesn't step behind
+  the still-playing screen. Cross-fading gains instead of disconnecting and reconnecting nodes
+  also removes the click that switch used to make.
 - **Waking is a hand-over, not a restart.** `exitBackground()` deliberately leaves the chain
   playing — the WebRTC link is usually dropped by the sleep and takes seconds to return, and
   killing the chain would cut to silence while we wait. The first `correct()` with a live
@@ -121,13 +133,19 @@ re-routed, rather than being folded into an EMA that could only crawl.
   resumes at the last known-good clock ratio. A generation counter invalidates any decode
   still in flight across every graph transition (in-flight decodes scheduling onto a graph
   being reset was crashing the renderer just after wake).
-- **A transport watchdog rejoins the room** ([useSync.ts](src/hooks/useSync.ts)). Android
-  tears down the peer connection during sleep and it does not reliably come back, leaving the
-  follower on a dead room receiving no beats. If beats have been absent > 6 s the follower
-  leaves and rejoins (10 s cooldown between attempts) *without touching the audio engine* — no
-  gesture is needed and the chain keeps playing across the reconnect. If the tab is discarded
-  outright, the room code is kept in `sessionStorage` and the landing page offers a one-tap
-  **Rejoin** (audio still needs a gesture, so this can't be fully automatic).
+- **A transport watchdog rejoins the room, including while asleep**
+  ([useSync.ts](src/hooks/useSync.ts)). Android Doze throttles the network a few minutes into a
+  screen-off and WebRTC drops the peer connection when its consent-freshness checks fail, so the
+  follower silently disappears from the screen's listener count and stops receiving beats even
+  though its audio is still free-running. If beats have been absent > 6 s the follower leaves
+  and rejoins *without touching the audio engine* — no gesture is needed and the chain keeps
+  playing across the reconnect. Because the keep-alive tap means the page is still running, this
+  now retries **while hidden** too, at a 45 s cooldown rather than the 10 s used when visible
+  (battery, and Doze will refuse most attempts anyway — but it recovers on Doze's maintenance
+  windows instead of waiting for the user to pick the phone up). On becoming visible it rejoins
+  immediately if the link is stale, rather than waiting out the staleness window. If the tab is
+  discarded outright, the room code is kept in `sessionStorage` and the landing page offers a
+  one-tap **Rejoin** (audio still needs a gesture, so that part can't be automatic).
 
 **Platform plumbing** — audio is unlocked inside the join tap (autoplay gate); *both*
 AudioContext engines are unlocked in that gesture since the source isn't known until the first
@@ -149,8 +167,10 @@ screen's 127 MB video for the 15-minute clip.
 - **Playback survives the phone going to sleep.** Pre-scheduled audio-thread chains plus
   clock-ratio free-run mean a locked phone keeps playing and comes back close, then hands over
   to a synced source — rather than stopping or waking up wildly out of sync.
-- **Recovers from Android's connection teardown.** The beat watchdog rejoins the room by
-  itself, and audio continues through the reconnect.
+- **Recovers from Android's connection teardown without the user.** An always-audible
+  keep-alive tap stops Chrome freezing the page, so the beat watchdog keeps running through a
+  sleep and rejoins the room by itself — during Doze's maintenance windows if need be — with
+  audio continuing across the reconnect.
 - **Zero backend.** No sync server, no media server, nothing to host or scale for playback
   itself. Signaling uses public relays; media ships with the PWA or off static hosting.
 - **Negligible sync bandwidth.** ~4 small JSON beats/sec plus a clock ping every 3 s per
@@ -194,8 +214,16 @@ screen's 127 MB video for the 15-minute clip.
 - **Free-run is uncorrected.** While locked there is no feedback loop, only the extrapolated
   clock ratio; error grows with lock duration, bounded by how good that estimate is (clamped
   to ±0.5 %).
-- **The watchdog is blunt.** It rejoins every 10 s whenever the screen looks absent, which
-  churns the signaling relays and papers over a genuinely offline screen.
+- **Staying alive on Android depends on an undocumented browser heuristic.** The keep-alive tap
+  works because Chrome won't freeze a page that is "playing audio", and 0.005 gain is a guess at
+  what clears its silence threshold. That's a load-bearing dependency on unspecified behaviour
+  which no feature detection can confirm — if Chrome tightens the threshold or the heuristic, the
+  symptom is a silent connection death minutes into a sleep. It also means a very quiet (~46 dB
+  down), sink-delayed copy of the audio is permanently mixed into Android/desktop foreground
+  output; inaudible in practice, but not a clean signal path.
+- **The watchdog is blunt, and now runs while asleep.** It rejoins whenever the screen looks
+  absent — every 10 s visible, every 45 s hidden — which churns the signaling relays, spends
+  battery on attempts Doze will mostly refuse, and papers over a genuinely offline screen.
 - **Buffer/stream rate nudges are not pitch-preserved.** `AudioBufferSourceNode.playbackRate`
   shifts pitch; the clamp is kept subtle (±2 %) so it's hard to hear, but it's a compromise
   the element engine doesn't make.
@@ -273,6 +301,12 @@ Scope boundaries of the current design (as opposed to defects):
   minutes asleep, and whether the wake hand-over is inaudible or a noticeable jump.
 - **The 0.15 s sink-latency constant.** Tuned by ear on one or two devices; unknown across
   Bluetooth codecs and Android OEM audio stacks.
+- **Whether the page really survives, and for how long.** The keep-alive tap and the
+  hidden watchdog are the newest and least-tested mechanisms here: it is not yet established how
+  long a follower keeps its connection through a screen-off, how often a hidden rejoin actually
+  succeeds under Doze, whether the 0.005 tap gain clears the silence threshold on all Chrome
+  builds (or is audible on any device with the volume up), or what the retry loop costs in
+  battery over a gallery day.
 - **Hostile venue networks.** Client-isolated Wi-Fi, symmetric NAT, captive portals — i.e.
   whether TURN is a nice-to-have or a requirement, and its cost. Range-fetch behaviour behind
   a caching proxy is also unknown.
@@ -302,7 +336,9 @@ Scope boundaries of the current design (as opposed to defects):
      star topology breaks, and it's a one-afternoon test.
 3. **Then soak it.** A full-day run with sleep/wake cycles and a deliberately flaky network is
    the only way to find out whether the watchdog, the chain top-up and the clock-ratio
-   estimator hold up, or merely survive the first ten minutes.
+   estimator hold up, or merely survive the first ten minutes. Instrument the thing the recent
+   fixes actually target: does the follower still appear in the screen's listener count after
+   30 minutes face-down in a pocket, and what did the retry loop cost in battery?
 4. **Decide the offline posture deliberately.** Long content is now network-dependent for its
    whole duration. Either accept that and provision the CDN accordingly, or add a
    service-worker route that caches window ranges (and pre-warms them) so a dropout doesn't
@@ -319,10 +355,11 @@ Scope boundaries of the current design (as opposed to defects):
    prefetch, multi-zone/room namespacing, telemetry (aggregate drift/latency/engine-mode
    reporting instead of a per-phone debug panel), and a perceptual acceptance test with naive
    users.
-9. **Track WebKit and WebCodecs.** Pin a quarterly check that the assumptions still hold on
-   new iOS releases — element pipeline stalls, `getOutputTimestamp` behaviour, `AudioDecoder`
-   availability and behaviour, and whether the lock-screen sink keep-alive still works. Keep
-   the element fallback alive as insurance.
+9. **Track WebKit, WebCodecs *and* Chromium's freeze policy.** Pin a quarterly check that the
+   assumptions still hold on new releases — element pipeline stalls, `getOutputTimestamp`
+   behaviour, `AudioDecoder` availability, whether the lock-screen sink keep-alive still works,
+   and whether Chrome still declines to freeze a page over a near-silent audio tap. Keep the
+   element fallback alive as insurance.
 
 ## Verdict
 
@@ -335,14 +372,15 @@ drift — under the ±80 ms perceptual bar with an order of magnitude to spare �
 backend, no media streaming over the wire, and no user calibration. It now also handles the
 two things that would have disqualified it in a gallery: **45-minute content at flat memory
 cost**, via windowed WebCodecs decode, and **playback that continues through screen lock**,
-via audio-thread scheduling and clock-ratio free-run, recovering its own connection
-afterwards. The engine split is the right architecture, not a workaround smell: it isolates
-exactly the code that platform media stacks force apart.
+via audio-thread scheduling and clock-ratio free-run, keeping its page alive and re-establishing
+its own connection without the visitor touching anything. The engine split is the right
+architecture, not a workaround smell: it isolates exactly the code that platform media stacks
+force apart.
 
 What is *not* yet proven is the gallery envelope: dozens of simultaneous followers per
 screen, hours-long sessions, the memory ceiling as actually measured rather than calculated,
 and hostile venue networks. The new capabilities also come with new dependencies — a CDN in
-the playback path for the whole session, and WebCodecs on the device. None of these looks like
-a design-breaker, and each has a plausible mitigation inside the current architecture, but
-they are empirical questions the next iteration should answer before this graduates from spike
-to product commitment.
+the playback path for the whole session, WebCodecs on the device, and an undocumented Chrome
+heuristic keeping the page alive. None of these looks like a design-breaker, and each has a
+plausible mitigation inside the current architecture, but they are empirical questions the next
+iteration should answer before this graduates from spike to product commitment.

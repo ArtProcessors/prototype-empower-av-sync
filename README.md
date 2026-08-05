@@ -85,9 +85,11 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
 - **Two-device (manual):** laptop = screen, phone (headphones) = follower — clicks line up
   with flashes; drift stays small on WiFi and cellular (enable TURN via `VITE_TURN_*` if a
   direct connection can't form).
-- **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing, and on
-  wake the follower re-establishes its connection and hands back to a synced source. Verified
-  by device testing rather than measurement; see FEASIBILITY.md for what's still open.
+- **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing, the page
+  stays alive (keep-alive tap), the watchdog re-establishes the connection if Doze drops it, and
+  on wake the follower hands back to a synced source. Worth watching the screen's listener count
+  as well as the phone: a follower that has silently lost its connection still plays. Verified by
+  device testing rather than measurement; see [FEASIBILITY.md](FEASIBILITY.md) for what's open.
 
 ## Videos & adding your own
 
@@ -133,26 +135,38 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   active. AAC/m4a itself is natively supported on iOS — format is not the issue.
 - **Background / lock-screen playback:** iOS suspends the AudioContext when the screen locks,
   and both platforms throttle the ~15 Hz corrector and the WebRTC beats when the page is
-  hidden. On `visibilitychange` the follower therefore:
-  1. routes output through a `MediaStreamAudioDestinationNode` played by an `<audio>` element
-     registered as the **MediaSession** (iOS keeps that element, and the graph feeding it,
-     alive; Android/desktop only switch to this sink while backgrounded, and skip content
-     forward by the sink's added buffering so the audio doesn't fall behind the screen), and
-  2. pre-schedules a **chain of buffer sources directly on the audio thread** (~180 s runway,
-     topped up from each source's `onended`), so playback free-runs without needing a timer.
+  hidden. The follower's output stage is therefore permanently split into two legs from a shared
+  master gain — a **direct leg** (`ctx.destination`) and a **sink leg**
+  (`MediaStreamAudioDestinationNode` → `<audio>` element registered as the **MediaSession**) —
+  and `visibilitychange` cross-fades between them over 6 ms rather than re-wiring nodes:
+  1. iOS keeps the sink leg audible throughout (it's what survives the lock, and it bypasses
+     the mute switch). Android/desktop keep the direct leg audible in the foreground and swap
+     to the sink when backgrounding, skipping content forward by the sink's added buffering so
+     the audio doesn't fall behind the screen.
+  2. **The sink leg is never silent.** Chrome on Android won't freeze a page that is playing
+     audio, and freezing kills the WebRTC connection with it — so even in the foreground the
+     sink element is fed a far-below-audible copy (`KEEPALIVE_GAIN`, 0.005 ≈ 46 dB down) to keep
+     the page alive for the whole session. Tune or disable with `?kagain=<0–1>`.
+  3. On hide, the streaming engine also pre-schedules a **chain of buffer sources directly on
+     the audio thread** (~180 s runway, topped up from each source's `onended`), so playback
+     free-runs without needing a timer.
   The chain runs at the **measured screen:device clock ratio** — a least-squares fit of target
   seconds against context seconds, clamped to ±0.5 % — rather than a blind 1.0, so a locked
   phone drifts far less than the crystals' ppm difference would imply. On wake the chain is
   deliberately left playing (WebRTC takes seconds to return) until a live target arrives, at
   which point a properly synced source starts and the chain is cut at the same de-clicked
-  instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway) and
-  `?sinklat=<sec>` (the sink's assumed added latency, default 0.15).
-- **Reconnect after sleep:** Android tears the peer connection down during sleep and it does
-  not reliably come back. A watchdog in `useSync.ts` rejoins the room if beats have been absent
-  > 6 s (10 s cooldown), without touching the audio engine — no gesture needed, and the
-  free-run chain keeps sounding across the reconnect. If the tab is discarded outright, the
-  room code is kept in `sessionStorage` and the landing page offers a one-tap **Rejoin**
-  (re-unlocking audio needs a real gesture, so that part can't be automatic).
+  instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway),
+  `?sinklat=<sec>` (the sink's assumed added latency, default 0.15) and `?kagain=<gain>`.
+- **Reconnect after sleep:** Android Doze throttles the network a few minutes into a screen-off
+  and WebRTC drops the peer connection when consent-freshness checks fail — the listener
+  vanishes from the screen's count while its audio keeps free-running. A watchdog in
+  `useSync.ts` rejoins the room if beats have been absent > 6 s, without touching the audio
+  engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. It
+  runs **while hidden too** (45 s cooldown, vs 10 s visible), so recovery can happen in a Doze
+  maintenance window instead of waiting for the user; on becoming visible it rejoins straight
+  away if the link is stale. If the tab is discarded outright, the room code is kept in
+  `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
+  real gesture, so that part can't be automatic).
 - **Automatic output-latency compensation (BYOD — no manual calibration):** what you *hear*
   trails the element/context clock by the device's output latency (~100–300 ms on iOS;
   Bluetooth adds even more). We measure it at runtime from
