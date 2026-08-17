@@ -22,5 +22,6 @@ interface ImportMetaEnv {
 }
 
 interface ImportMeta {
+  /** Build-time environment variables; see {@link ImportMetaEnv}. */
   readonly env: ImportMetaEnv
 }

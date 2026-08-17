@@ -56,7 +56,9 @@ export const RELAY_URLS: string[] = (import.meta.env.VITE_NOSTR_RELAYS || '')
  * the selected backend ends up in the bundle.
  */
 export async function loadStrategy(): Promise<{
+  /** Trystero's room-joining entry point for the selected backend. */
   joinRoom: typeof import('trystero/nostr').joinRoom
+  /** This device's peer id, stable for the page's lifetime. */
   selfId: string
 }> {
   switch (STRATEGY) {

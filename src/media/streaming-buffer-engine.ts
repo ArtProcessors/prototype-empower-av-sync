@@ -220,72 +220,137 @@ function buildAacLcAsc(
  * however long the track is.
  */
 export class StreamingBufferEngine implements FollowerAudioEngine {
+  // ── Output stage ──
+
+  /** The context every source is scheduled on; created inside the join tap. */
   private ctx: AudioContext | null = null
+  /**
+   * Background keep-alive sink: the graph feeds this stream and
+   * {@link sinkElement} plays it, which is what keeps a locked/backgrounded
+   * page (and its WebRTC link) alive.
+   */
   private streamDest: MediaStreamAudioDestinationNode | null = null
+  /** The <audio> element playing {@link streamDest}'s stream. */
   private sinkElement: HTMLAudioElement | null = null
+  /** Master gain every source routes through, so swaps can be de-clicked. */
   private masterGain: GainNode | null = null
-  // Output mix: masterGain feeds BOTH legs permanently and we cross-fade
-  // between them, rather than disconnecting/reconnecting. The sink leg is
-  // never fully off (see KEEPALIVE_GAIN) so its <audio> element keeps playing
-  // for the whole session and Chrome never freezes the page.
+  /**
+   * Speaker leg of the output mix. {@link masterGain} feeds BOTH legs
+   * permanently and {@link connectOutput} cross-fades between them, rather
+   * than disconnecting/reconnecting.
+   */
   private directGain: GainNode | null = null
+  /**
+   * Keep-alive-sink leg of the output mix. Never taken fully to zero (see
+   * {@link KEEPALIVE_GAIN}) so its <audio> element keeps playing for the whole
+   * session and Chrome never freezes the page.
+   */
   private sinkGain: GainNode | null = null
+  /** Whether the current segment has reached lock and faded in. */
   private audible = false
 
-  // Demux state: only the sample table (byte offsets/timing) is kept; sample
-  // DATA is range-fetched per window on demand.
+  // ── Demux state: only the sample table (byte offsets/timing) is kept;
+  //    sample DATA is range-fetched per window on demand. ──
+
+  /** Per-sample offsets and timing parsed from the moov. */
   private table: SampleTable | null = null
+  /** URL {@link table} was demuxed from. */
   private demuxedUrl: string | null = null
+  /** URL currently being demuxed, so loads aren't duplicated. */
   private loadingUrl: string | null = null
+  /** URL we want playing; work whose URL no longer matches is discarded. */
   private desiredUrl: string | null = null
+  /** WebCodecs codec string for the track, e.g. `mp4a.40.2`. */
   private codec = ''
+  /** AAC-LC AudioSpecificConfig handed to the decoder as its `description`. */
   private audioSpecificConfig: Uint8Array | null = null
+  /** Track sample rate, in Hz. */
   private sampleRate = 44100
+  /** Track channel count. */
   private channelCount = 2
+  /** Full track length in seconds (the loop length followers wrap against). */
   private totalSec = 0
 
-  // Window / playback state.
-  private latestWindow: DecodedWindow | null = null // most recently decoded window
-  private sourceWindow: DecodedWindow | null = null // window the live source plays
-  private pendingStartSec: number | null = null // track-sec a decode is in flight for (null = none)
-  private source: AudioBufferSourceNode | null = null
-  private startCtxTime = 0
-  private startOffset = 0 // track-sec at startCtxTime
-  private rate = 1
-  private smoothedDriftSec = 0
-  private lastRestartAt = 0
-  // Measured output latency for the DIRECT (ctx.destination) path. The sink
-  // path's latency is this plus SINK_SWITCH_LATENCY_SEC — see
-  // activeLatencySec. Keeping them separate matters because the physical
-  // latency changes the instant we switch paths, while an EMA can only crawl.
-  private measuredLatencySec = 0
-  private hardStopped = false
-  // Bumped on every graph transition (background enter/exit, resync, stop).
-  // Async decodes and the chain builder capture it and bail if it changed — so
-  // work started before a transition (e.g. an in-flight decode during sleep)
-  // can't schedule onto the graph as it's being reset, which was crashing the
-  // renderer a moment after waking.
-  private generation = 0
-  // Background free-run: extra sources chained ahead on the audio thread so
-  // playback survives the correction timer being throttled while the screen is
-  // locked.
-  private backgrounded = false
-  private chainedSources: AudioBufferSourceNode[] = []
-  private chainEndsAtCtx = 0 // context time the scheduled chain runs out (0 = no chain)
-  private chainTrackEnd = 0 // track-sec the chain currently covers up to (for top-ups)
-  private chainBuilding = false // guards buildChain against overlapping runs
-  private latencyHoldUntilCtx = 0 // suppress latency re-estimation until this context time
-  private freeRunRate = 1 // rate the chain was scheduled at (measured clock ratio)
-  // Steady-state rate to hold when locked: the measured screen:device clock
-  // ratio. Persists across sleeps and estimator resets, so we never snap back
-  // to a 1.0 we know to be wrong.
-  private holdRate = 1
-  // Clock-ratio estimator state (see recordClockRatioSample).
-  private ratioSamples: ClockRatioSample[] = []
-  private ratioAccumSec = -1 // unwrapped target seconds (-1 = not started)
-  private lastRatioTargetSec = 0
-  private usingSink = false // master gain routed to the keep-alive sink vs the speakers
+  // ── Window / playback state ──
 
+  /** Most recently decoded window, whether or not it is playing yet. */
+  private latestWindow: DecodedWindow | null = null
+  /** The window {@link source} is currently playing from. */
+  private sourceWindow: DecodedWindow | null = null
+  /** Track-second a decode is in flight for (`null` = none). */
+  private pendingStartSec: number | null = null
+  /** The source node currently sounding. */
+  private source: AudioBufferSourceNode | null = null
+  /**
+   * Context time the current segment started at. Together with
+   * {@link startOffset} and {@link rate} this maps context time to track
+   * position: `position = startOffset + (ctxNow - startCtxTime) * rate`.
+   */
+  private startCtxTime = 0
+  /** Track position at {@link startCtxTime}, in seconds. */
+  private startOffset = 0
+  /** Playback rate the current segment was last set to. */
+  private rate = 1
+  /** EMA of the raw drift, so steering isn't driven by per-tick noise. */
+  private smoothedDriftSec = 0
+  /** `Date.now()` of the last reposition, for the restart cooldown. */
+  private lastRestartAt = 0
+  /**
+   * Measured output latency for the DIRECT (`ctx.destination`) path. The sink
+   * path's latency is this plus {@link SINK_SWITCH_LATENCY_SEC} — see
+   * {@link activeLatencySec}. Keeping them separate matters because the
+   * physical latency changes the instant we switch paths, while an EMA can
+   * only crawl.
+   */
+  private measuredLatencySec = 0
+  /** Set by {@link stop}; keeps playback down until the next unlock. */
+  private hardStopped = false
+  /**
+   * Bumped on every graph transition (background enter/exit, resync, stop).
+   * Async decodes and the chain builder capture it and bail if it changed — so
+   * work started before a transition (e.g. an in-flight decode during sleep)
+   * can't schedule onto the graph as it's being reset, which was crashing the
+   * renderer a moment after waking.
+   */
+  private generation = 0
+
+  // ── Background free-run: extra sources chained ahead on the audio thread so
+  //    playback survives the correction timer being throttled while the screen
+  //    is locked. ──
+
+  /** Whether the page is currently backgrounded and free-running. */
+  private backgrounded = false
+  /** Sources pre-scheduled ahead of {@link source} to cover the lock. */
+  private chainedSources: AudioBufferSourceNode[] = []
+  /** Context time the scheduled chain runs out (0 = no chain). */
+  private chainEndsAtCtx = 0
+  /** Track-second the chain covers up to, so top-ups resume from there. */
+  private chainTrackEnd = 0
+  /** Guards {@link buildChain} against overlapping runs. */
+  private chainBuilding = false
+  /** Suppress latency re-estimation until this context time (post-wake). */
+  private latencyHoldUntilCtx = 0
+  /** Rate the chain was scheduled at — the measured clock ratio. */
+  private freeRunRate = 1
+  /**
+   * Steady-state rate to hold when locked: the measured screen:device clock
+   * ratio. Persists across sleeps and estimator resets, so we never snap back
+   * to a 1.0 we know to be wrong.
+   */
+  private holdRate = 1
+
+  // ── Clock-ratio estimator (see recordClockRatioSample) ──
+
+  /** Recent (context time, unwrapped target) pairs feeding the regression. */
+  private ratioSamples: ClockRatioSample[] = []
+  /** Running unwrapped target seconds (-1 = not started). */
+  private ratioAccumSec = -1
+  /** Previous target, so only smooth forward advances are accumulated. */
+  private lastRatioTargetSec = 0
+  /** Whether the master gain is on the keep-alive sink vs the speakers. */
+  private usingSink = false
+
+  /** Called when demux/decode is impossible, so the controller can fall back. */
   private readonly onLoadFailed: (url: string) => void
 
   /** Whether {@link unlock} has run inside a user gesture. */
@@ -405,6 +470,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     return this.streamDest != null
   }
 
+  /** Where sources connect: the master gain, else the speakers directly. */
   private outputNode(): AudioNode {
     return this.masterGain ?? this.ctx!.destination
   }
@@ -462,6 +528,10 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     return this.demuxedUrl === url && this.table != null
   }
 
+  /**
+   * Fetch only the moov and build {@link table} from it — no sample data, so
+   * memory stays flat however long the track is.
+   */
   private async loadMetadata(url: string): Promise<void> {
     this.loadingUrl = url
 
@@ -831,6 +901,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     this.decodeInto(startSec)
   }
 
+  /** Decode the window at `startSec` and install it once it lands. */
   private decodeInto(startSec: number): void {
     this.pendingStartSec = startSec
 
@@ -862,6 +933,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
 
   // ─── Gain helpers (identical model to BufferAudioEngine) ───
 
+  /** Silence output immediately (cold starts converge silently until lock). */
   private mute(): void {
     this.audible = false
 
@@ -877,6 +949,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     gain.linearRampToValueAtTime(0, now + DECLICK_SEC)
   }
 
+  /** Fade in on the first lock — called once drift is inside the deadband. */
   private unmute(): void {
     if (this.audible) {
       return
@@ -896,6 +969,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     gain.linearRampToValueAtTime(1, now + UNMUTE_SEC)
   }
 
+  /** Dip the master gain to 0 across a source swap so the edge can't pop. */
   private declickSwap(when: number): void {
     const gain = this.masterGain?.gain
 
@@ -910,6 +984,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     gain.linearRampToValueAtTime(1, when + DECLICK_SEC)
   }
 
+  /** Fade the output down, then stop and retire the current source. */
   private stopSource(): void {
     const source = this.source
     this.source = null
@@ -954,6 +1029,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     }
   }
 
+  /** Track position at context time `ctxNow`, unwrapped (may exceed the loop). */
   private positionSec(ctxNow: number): number {
     return this.startOffset + (ctxNow - this.startCtxTime) * this.rate
   }
@@ -1025,6 +1101,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     this.lastRestartAt = Date.now()
   }
 
+  /** Apply a playback rate, unless it is within {@link RATE_EPS} of the current one. */
   private setRate(rate: number, ctxNow: number): void {
     if (!this.source || Math.abs(rate - this.rate) <= RATE_EPS) {
       return
@@ -1142,6 +1219,10 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     return Math.min(1 + RATIO_MAX_DEV, Math.max(1 - RATIO_MAX_DEV, slope))
   }
 
+  /**
+   * Refresh {@link measuredLatencySec} for the direct path, skipping readings
+   * taken while on the sink or during the post-wake settling window.
+   */
   private sampleOutputLatency(): void {
     const ctx = this.ctx
 
@@ -1513,6 +1594,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     )
   }
 
+  /** Serialised entry point to {@link buildChainInner}. */
   private async buildChain(
     fromTrackSec: number,
     untilCtxTime: number,
@@ -1547,6 +1629,10 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     )
   }
 
+  /**
+   * Schedule windows from `fromTrackSec` onto the audio thread until the chain
+   * reaches `untilCtxTime`, bailing if the graph transitions mid-build.
+   */
   private async buildChainInner(
     fromTrackSec: number,
     untilCtxTime: number,

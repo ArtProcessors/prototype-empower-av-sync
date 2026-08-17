@@ -105,35 +105,72 @@ export interface FollowerAudioEngine {
  * whichever path is live toward the screen's position.
  */
 export class AudioSyncController {
+  /** The <audio> element: the live output whenever no engine is selected. */
   private element: HTMLAudioElement
+  /** Soundtrack the follower should be playing right now. */
   private currentUrl: string
+  /**
+   * Web Audio context the element is routed through. Never created on iOS,
+   * where the element plays directly as a bare fallback.
+   */
   private ctx: AudioContext | null = null
+  /** {@link element} wrapped as a Web Audio node, once routing succeeded. */
   private sourceNode: MediaElementAudioSourceNode | null = null
+  /** Whether the element's output goes through Web Audio (mute-switch safe). */
   private routed = false
+  /** Set by {@link stop}; keeps the element paused until the next unlock. */
   private hardStopped = false
+  /** EMA of the raw drift, so steering isn't driven by per-tick noise. */
   private smoothedDriftSec = 0
+  /** `Date.now()` of the last hard seek, for the seek cooldown. */
   private lastSeekAt = 0
+  /** Last rate we asked the element for; reported back to the UI. */
   private lastAppliedRate = 1
+  /**
+   * Local playback position in seconds, advanced internally while the element
+   * clock is frozen. See {@link sampleLocalSec}.
+   */
   private trackedSec = 0
+  /** `Date.now()` at which {@link trackedSec} was last updated (0 = never). */
   private lastTrackAt = 0
+  /** Previous `element.currentTime`, used to spot a frozen element clock. */
   private lastObservedSec = -1
+  /** `Date.now()` until which steering pauses after a hard seek. */
   private seekSettleUntil = 0
-  private needsInitialSync = true // snap to the live target on join/resync, however small the drift
-  private measuredLatencySec = 0 // auto-measured output latency (see sampleOutputLatency)
-  // Advanced (AudioContext-clock) engines: buffer = whole-file decode (iOS,
-  // short content); stream = windowed WebCodecs decode (any platform, long
-  // content). `engine` points at the one selected for the current source, or
-  // null when the element path is the live output.
+  /** Snap to the live target on join/resync, however small the drift. */
+  private needsInitialSync = true
+  /** Auto-measured output latency. See {@link sampleOutputLatency}. */
+  private measuredLatencySec = 0
+  /**
+   * Whole-file decode engine — iOS, short content. `null` off iOS, where the
+   * element path handles short content.
+   */
   private bufferEngine: BufferAudioEngine | null = null
+  /**
+   * Windowed WebCodecs decode engine — any platform, long content. `null`
+   * where WebCodecs is unavailable (iOS < 16.4).
+   */
   private streamEngine: StreamingBufferEngine | null = null
+  /**
+   * The engine selected for {@link currentUrl}, or `null` when the element
+   * path is the live output.
+   */
   private engine: FollowerAudioEngine | null = null
-  private mediaSessionReady = false // lock-screen now-playing session wired (all platforms)
-  private engineActive = false // the selected engine is the live output (once loaded)
-  private enginePending = false // engine is loading; element/silent meanwhile
+  /** Whether the lock-screen now-playing session is wired (all platforms). */
+  private mediaSessionReady = false
+  /** The selected engine has loaded and is now the live output. */
+  private engineActive = false
+  /** The selected engine is still loading; the element stays silent. */
+  private enginePending = false
 
   /** Whether {@link unlock} has run inside a user gesture. */
   unlocked = false
 
+  /**
+   * Build the fallback <audio> element and the engines this platform can
+   * use. Nothing here touches the AudioContext — that waits for the join tap
+   * (see {@link unlock}).
+   */
   constructor() {
     const element = new Audio()
     // Must be set BEFORE the src loads: the element is routed through Web
@@ -165,6 +202,7 @@ export class AudioSyncController {
     }
   }
 
+  /** Whether an engine owns the current source, loaded or still loading. */
   private get engineWanted(): boolean {
     return this.engine != null && (this.engineActive || this.enginePending)
   }
@@ -181,6 +219,10 @@ export class AudioSyncController {
     return IS_IOS ? this.bufferEngine : null
   }
 
+  /**
+   * Abandon the selected engine and make the <audio> element the live output,
+   * repointing it at the current soundtrack.
+   */
   private fallbackToElement(): void {
     // Bail only if the element is ALREADY the live output (no engine engaged)
     // — otherwise we're falling back from an engine (mid-playback OR while it
@@ -236,6 +278,7 @@ export class AudioSyncController {
     }
   }
 
+  /** Clear the element path's clock and drift state after a source change. */
   private resetAfterSourceChange(): void {
     this.trackedSec = 0
     this.lastTrackAt = 0
@@ -457,6 +500,7 @@ export class AudioSyncController {
     }
   }
 
+  /** Release the now-playing session and its action handlers. */
   private teardownMediaSession(): void {
     this.mediaSessionReady = false
 
@@ -527,6 +571,7 @@ export class AudioSyncController {
       : latencySec
   }
 
+  /** Output latency to compensate for on the element path, in seconds. */
   private outputLatencySec(): number {
     if (this.routed) {
       return this.measuredLatencySec
@@ -548,6 +593,7 @@ export class AudioSyncController {
     return (((targetSec + shift) % duration) + duration) % duration
   }
 
+  /** Apply a playback rate to the element, skipping inaudible changes. */
   private setPlaybackRate(rate: number): void {
     // Compare against the element's ACTUAL rate, not a cache of what we last
     // wrote — engines may silently reset playbackRate to 1 after

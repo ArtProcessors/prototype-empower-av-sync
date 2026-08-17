@@ -12,6 +12,7 @@ import { ExpirationPlugin } from 'workbox-expiration'
 import { RangeRequestsPlugin } from 'workbox-range-requests'
 
 declare let self: ServiceWorkerGlobalScope & {
+  /** Precache manifest injected at build time by vite-plugin-pwa. */
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>
 }
 

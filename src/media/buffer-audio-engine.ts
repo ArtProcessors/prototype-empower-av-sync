@@ -52,31 +52,54 @@ const UNMUTE_SEC = 0.03 // fade-in once we first reach lock (converge silently b
  * content; see StreamingBufferEngine for long-form audio.
  */
 export class BufferAudioEngine implements FollowerAudioEngine {
+  /** The context every source is scheduled on; created inside the join tap. */
   private ctx: AudioContext | null = null
-  // Background keep-alive sink: the graph feeds this stream, an <audio>
-  // element plays it, and iOS keeps that element (and thus the graph) alive
-  // when the screen locks.
+  /**
+   * Background keep-alive sink: the graph feeds this stream, {@link sinkElement}
+   * plays it, and iOS keeps that element (and thus the graph) alive when the
+   * screen locks. `null` when the sink couldn't be built — output then goes
+   * straight to `ctx.destination`.
+   */
   private streamDest: MediaStreamAudioDestinationNode | null = null
+  /** The <audio> element playing {@link streamDest}'s stream. */
   private sinkElement: HTMLAudioElement | null = null
-  // Master gain: sources route through this so swaps can be de-clicked, and so
-  // a cold (from-idle) convergence plays silently until it first locks — no
-  // audible seek thrash.
+  /**
+   * Master gain every source routes through, so swaps can be de-clicked and a
+   * cold (from-idle) convergence plays silently until it first locks — no
+   * audible seek thrash.
+   */
   private masterGain: GainNode | null = null
-  private audible = false // has the current segment reached lock and faded in?
+  /** Whether the current segment has reached lock and faded in. */
+  private audible = false
+  /** The whole soundtrack, decoded to PCM. */
   private buffer: AudioBuffer | null = null
-  private bufferUrl: string | null = null // url the decoded buffer belongs to
+  /** URL {@link buffer} was decoded from. */
+  private bufferUrl: string | null = null
+  /** URL currently being fetched/decoded, so loads aren't duplicated. */
   private loadingUrl: string | null = null
+  /** URL we want playing; a load whose URL no longer matches is discarded. */
   private desiredUrl: string | null = null
+  /** The source node currently sounding. */
   private source: AudioBufferSourceNode | null = null
-  // Clock mapping for the current source segment:
-  // position = startOffset + (ctxNow - startCtxTime) * rate
+  /**
+   * Context time the current segment started at. Together with
+   * {@link startOffset} and {@link rate} this maps context time to track
+   * position: `position = startOffset + (ctxNow - startCtxTime) * rate`.
+   */
   private startCtxTime = 0
+  /** Track position at {@link startCtxTime}, in seconds. */
   private startOffset = 0
+  /** Playback rate the current segment was last set to. */
   private rate = 1
+  /** EMA of the raw drift, so steering isn't driven by per-tick noise. */
   private smoothedDriftSec = 0
+  /** `Date.now()` of the last reposition, for the restart cooldown. */
   private lastRestartAt = 0
+  /** Auto-measured output latency. See {@link sampleOutputLatency}. */
   private measuredLatencySec = 0
+  /** Set by {@link stop}; keeps playback down until the next unlock. */
   private hardStopped = false
+  /** Called when fetch/decode fails, so the controller can fall back. */
   private readonly onLoadFailed: (url: string) => void
 
   /** Whether {@link unlock} has run inside a user gesture. */
@@ -204,6 +227,7 @@ export class BufferAudioEngine implements FollowerAudioEngine {
     return this.buffer != null && this.bufferUrl === url
   }
 
+  /** Fetch and decode `url` into {@link buffer}; de-dupes concurrent calls. */
   private load(url: string): void {
     if (this.bufferUrl === url || this.loadingUrl === url || !this.ctx) {
       return
@@ -241,6 +265,7 @@ export class BufferAudioEngine implements FollowerAudioEngine {
       })
   }
 
+  /** Fade the output down, then stop and retire the current source. */
   private stopSource(): void {
     const source = this.source
     this.source = null
@@ -286,6 +311,7 @@ export class BufferAudioEngine implements FollowerAudioEngine {
     }
   }
 
+  /** Track position at context time `ctxNow`, wrapped into the loop. */
   private positionSec(ctxNow: number): number {
     const duration = this.buffer!.duration
     const raw = this.startOffset + (ctxNow - this.startCtxTime) * this.rate
@@ -395,6 +421,7 @@ export class BufferAudioEngine implements FollowerAudioEngine {
     this.lastRestartAt = Date.now()
   }
 
+  /** Apply a playback rate, re-anchoring the clock mapping at `ctxNow`. */
   private setRate(rate: number, ctxNow: number): void {
     if (!this.source || Math.abs(rate - this.rate) <= RATE_EPS) {
       return
@@ -407,6 +434,10 @@ export class BufferAudioEngine implements FollowerAudioEngine {
     this.source.playbackRate.value = rate
   }
 
+  /**
+   * Refresh the output-latency estimate from `getOutputTimestamp()`, falling
+   * back to `outputLatency` and then to {@link FALLBACK_LATENCY_SEC}.
+   */
   private sampleOutputLatency(): void {
     const ctx = this.ctx
 
