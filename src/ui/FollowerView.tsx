@@ -1,21 +1,21 @@
 import type { SyncApi } from '../hooks/useSync'
 import { DebugPanel } from './DebugPanel'
+import { driftClassName } from './drift'
 import { KeepAwakeOption } from './KeepAwakeOption'
 
+/** The listener's screen: live drift from the screen, plus session controls. */
 export function FollowerView({ api }: { api: SyncApi }) {
-  const s = api.state!
-  const drift = api.correction.driftMs
-  const cls =
-    Math.abs(drift) < 50 ? 'drift-good' : Math.abs(drift) < 150 ? 'drift-warn' : 'drift-bad'
+  const syncState = api.state!
+  const driftMs = api.correction.driftMs
 
   return (
     <main className="wrap">
       <header className="topbar">
         <div>
           <b>🎧 Listener</b> <span className="muted">· room </span>
-          <code className="roomcode">{s.roomCode}</code>
+          <code className="roomcode">{syncState.roomCode}</code>
         </div>
-        <button className="ghost" onClick={() => void api.leave()}>
+        <button className="ghost" onClick={() => api.leave()}>
           Leave
         </button>
       </header>
@@ -23,19 +23,23 @@ export function FollowerView({ api }: { api: SyncApi }) {
       <KeepAwakeOption api={api} />
 
       <p className="muted">
-        Put on headphones — your audio is kept in sync with the screen's video. The big number
-        is your live drift from the screen.
+        Put on headphones — your audio is kept in sync with the screen's video.
+        The big number is your live drift from the screen.
       </p>
 
-      {!s.screenOnline ? (
-        <div className="connecting">Waiting for the screen… (no sync beats yet)</div>
+      {!syncState.screenOnline ? (
+        <div className="connecting">
+          Waiting for the screen… (no sync beats yet)
+        </div>
       ) : api.correction.mode === 'syncing' ? (
-        <div className="connecting">Syncing audio… (downloading the soundtrack)</div>
+        <div className="connecting">
+          Syncing audio… (downloading the soundtrack)
+        </div>
       ) : (
-        <div className={`drift-hero ${cls}`}>
+        <div className={`drift-hero ${driftClassName(driftMs)}`}>
           <div className="drift-num">
-            {drift >= 0 ? '+' : ''}
-            {drift.toFixed(0)}
+            {driftMs >= 0 ? '+' : ''}
+            {driftMs.toFixed(0)}
             <span className="drift-unit"> ms</span>
           </div>
           <div className="muted small">

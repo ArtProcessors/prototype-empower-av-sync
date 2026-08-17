@@ -1,24 +1,32 @@
 /**
- * Long-form follower audio engine. Whole-file decode (BufferAudioEngine) costs ~21 MB/min,
- * so a 45-min track would need ~950 MB of RAM — untenable on a phone. This engine keeps that
- * flat by decoding only a sliding WINDOW of the timeline with WebCodecs:
+ * Long-form follower audio engine. Whole-file decode (BufferAudioEngine) costs
+ * ~21 MB/min, so a 45-min track would need ~950 MB of RAM — untenable on a
+ * phone. This engine keeps that flat by decoding only a sliding WINDOW of the
+ * timeline with WebCodecs:
  *
- *   fetch compressed file (small) → demux (mp4box) into encoded AAC frames kept in memory →
- *   decode a ~60 s PCM window around the playhead → play it EXACTLY like BufferAudioEngine
- *   (AudioContext-clock scheduling, sample-accurate source-node repositioning, playbackRate
- *   nudges, mute-switch-bypassing stream-sink keep-alive) → refill/slide the window before it
- *   runs out. Memory stays ~85 MB regardless of track length.
+ *   fetch compressed file (small) → demux (mp4box) into encoded AAC frames
+ *   kept in memory → decode a ~60 s PCM window around the playhead → play it
+ *   EXACTLY like BufferAudioEngine (AudioContext-clock scheduling,
+ *   sample-accurate source-node repositioning, playbackRate nudges,
+ *   mute-switch-bypassing stream-sink keep-alive) → refill/slide the window
+ *   before it runs out. Memory stays ~85 MB regardless of track length.
  *
- * Within a window it IS BufferAudioEngine — same correction math, gain de-click, and the iOS
- * lock-screen stream sink. The only added machinery is window bookkeeping: decode the next
- * window ahead of the playhead and swap to it (a de-clicked reposition into the overlapping
- * region, so it's seamless), and decode a fresh window on a large seek / loop wrap.
+ * Within a window it IS BufferAudioEngine — same correction math, gain
+ * de-click, and the iOS lock-screen stream sink. The only added machinery is
+ * window bookkeeping: decode the next window ahead of the playhead and swap to
+ * it (a de-clicked reposition into the overlapping region, so it's seamless),
+ * and decode a fresh window on a large seek / loop wrap.
  *
- * Falls back (via onLoadFailed) when WebCodecs is unavailable (iOS < 16.4), demux fails, or
- * the codec isn't AAC-LC — the controller then routes to the element path.
+ * Falls back (via onLoadFailed) when WebCodecs is unavailable (iOS < 16.4),
+ * demux fails, or the codec isn't AAC-LC — the controller then routes to the
+ * element path.
  */
 import { signedDrift, correctionRate } from '../sync/sync-math'
-import type { CorrectionInfo, CorrectionMode, FollowerAudioEngine } from './audio-sync-controller'
+import type {
+  CorrectionInfo,
+  CorrectionMode,
+  FollowerAudioEngine,
+} from './audio-sync-controller'
 
 const WINDOW_SEC = 60 // decoded PCM window length (~21 MB stereo)
 const WINDOW_STEP_SEC = 45 // how far each slide advances the window start (=> 15 s overlap)
@@ -42,251 +50,357 @@ const LATENCY_EMA_ALPHA = 0.2
 const FALLBACK_LATENCY_SEC = 0.12
 const DECLICK_SEC = 0.006
 const UNMUTE_SEC = 0.03
-// When we switch to the keep-alive sink on backgrounding, the <audio> element adds output
-// latency that ctx.destination (the foreground path) didn't have, so the audio would lag the
-// screen by that much. We can't measure the element's buffer from JS, so skip content forward
-// by this estimate at the switch to keep sleep audio aligned (bigger = audio pulled earlier).
-// Device-dependent (Bluetooth adds more) — override on-device with `?sinklat=0.25` to tune,
-// then bake the winning value in here.
-const SINK_SWITCH_LATENCY_SEC = (() => {
-  if (typeof location !== 'undefined') {
-    const m = /[?&]sinklat=([0-9.]+)/.exec(location.search)
-    if (m) {
-      const v = parseFloat(m[1])
-      if (isFinite(v) && v >= 0 && v < 1) return v
-    }
-  }
-  return 0.15
-})()
-
-// Seconds of audio pre-scheduled ahead when backgrounded so playback survives the throttled
-// correction timer. Each ~60 s window is ~21 MB of PCM held at once, so a long runway is a big
-// memory spike right as Android is trying to freeze the tab — a prime trigger for the OS to
-// discard (reload) the tab. Trade runway vs. discard-risk; override on-device with `?runway=90`.
-const BACKGROUND_RUNWAY_SEC = (() => {
-  if (typeof location !== 'undefined') {
-    const m = /[?&]runway=([0-9.]+)/.exec(location.search)
-    if (m) {
-      const v = parseFloat(m[1])
-      if (isFinite(v) && v >= 30 && v <= 900) return v
-    }
-  }
-  return 180
-})()
 
 /**
- * After a wake the platform's reported output latency is unreliable for a few seconds (buffers
- * refill, the context has just resumed). Feeding those readings into `aim` makes the target crawl,
- * and the corrector chases it — the "too slow, then bumped up, then too fast" handover. So hold the
+ * Read a numeric on-device tuning override from the query string, e.g.
+ * `?sinklat=0.25`. Values that don't parse or fail `isValid` fall back.
+ */
+function readNumberFromQuery(
+  param: string,
+  fallback: number,
+  isValid: (value: number) => boolean,
+): number {
+  if (typeof location === 'undefined') {
+    return fallback
+  }
+
+  const match = new RegExp(`[?&]${param}=([0-9.]+)`).exec(location.search)
+
+  if (!match) {
+    return fallback
+  }
+
+  const value = parseFloat(match[1])
+
+  return isFinite(value) && isValid(value) ? value : fallback
+}
+
+// When we switch to the keep-alive sink on backgrounding, the <audio> element
+// adds output latency that ctx.destination (the foreground path) didn't have,
+// so the audio would lag the screen by that much. We can't measure the
+// element's buffer from JS, so skip content forward by this estimate at the
+// switch to keep sleep audio aligned (bigger = audio pulled earlier).
+// Device-dependent (Bluetooth adds more) — override on-device with
+// `?sinklat=0.25` to tune, then bake the winning value in here.
+const SINK_SWITCH_LATENCY_SEC = readNumberFromQuery(
+  'sinklat',
+  0.15,
+  value => value >= 0 && value < 1,
+)
+
+// Seconds of audio pre-scheduled ahead when backgrounded so playback survives
+// the throttled correction timer. Each ~60 s window is ~21 MB of PCM held at
+// once, so a long runway is a big memory spike right as Android is trying to
+// freeze the tab — a prime trigger for the OS to discard (reload) the tab.
+// Trade runway vs. discard-risk; override on-device with `?runway=90`.
+const BACKGROUND_RUNWAY_SEC = readNumberFromQuery(
+  'runway',
+  180,
+  value => value >= 30 && value <= 900,
+)
+
+/**
+ * After a wake the platform's reported output latency is unreliable for a few
+ * seconds (buffers refill, the context has just resumed). Feeding those
+ * readings into `aim` makes the target crawl, and the corrector chases it —
+ * the "too slow, then bumped up, then too fast" handover. So hold the
  * pre-sleep estimate, measured under stable conditions, until things settle.
  */
 const LATENCY_SETTLE_SEC = 4
 
 /**
- * Gain of the always-on tap feeding the keep-alive <audio> element while the audible output is the
- * direct path (non-iOS foreground).
+ * Gain of the always-on tap feeding the keep-alive <audio> element while the
+ * audible output is the direct path (non-iOS foreground).
  *
- * Chrome on Android does not freeze a page that is actively playing audio. On the whole-file path
- * the <audio> element IS the output, so it plays unbroken across a screen sleep and the page — with
- * its timers and its WebRTC connection — stays alive. Routing straight to ctx.destination gave us
- * clean foreground audio but left no playing element, so the page froze and the peer connection
- * died with it. Feeding the element a continuous, far-below-audible copy keeps Chrome's
- * "playing audio" state true for the whole session without putting the sink's buffering in the
- * audible path. Must stay above Chrome's silence threshold to count, hence not simply 0.
- * Tune on-device with `?kagain=0.01` (0 disables the tap entirely).
+ * Chrome on Android does not freeze a page that is actively playing audio. On
+ * the whole-file path the <audio> element IS the output, so it plays unbroken
+ * across a screen sleep and the page — with its timers and its WebRTC
+ * connection — stays alive. Routing straight to ctx.destination gave us clean
+ * foreground audio but left no playing element, so the page froze and the peer
+ * connection died with it. Feeding the element a continuous, far-below-audible
+ * copy keeps Chrome's "playing audio" state true for the whole session without
+ * putting the sink's buffering in the audible path. Must stay above Chrome's
+ * silence threshold to count, hence not simply 0. Tune on-device with
+ * `?kagain=0.01` (0 disables the tap entirely).
  */
-const KEEPALIVE_GAIN = (() => {
-  if (typeof location !== 'undefined') {
-    const m = /[?&]kagain=([0-9.]+)/.exec(location.search)
-    if (m) {
-      const v = parseFloat(m[1])
-      if (isFinite(v) && v >= 0 && v <= 1) return v
-    }
-  }
-  return 0.005
-})()
+const KEEPALIVE_GAIN = readNumberFromQuery(
+  'kagain',
+  0.005,
+  value => value >= 0 && value <= 1,
+)
 
-// iOS needs the MediaStream sink for foreground output too (mute-switch bypass + lock-screen
-// keep-alive), and it's smooth there. Android/desktop route straight to the speakers in the
-// foreground — the sink's extra buffering there causes latency/jitter/rough swaps — and only
-// switch to the sink while backgrounded (for the free-run chain to survive the lock).
+// iOS needs the MediaStream sink for foreground output too (mute-switch bypass
+// + lock-screen keep-alive), and it's smooth there. Android/desktop route
+// straight to the speakers in the foreground — the sink's extra buffering
+// there causes latency/jitter/rough swaps — and only switch to the sink while
+// backgrounded (for the free-run chain to survive the lock).
 const IS_IOS =
   typeof navigator !== 'undefined' &&
   (/iP(hone|ad|od)/.test(navigator.userAgent) ||
-    (/Macintosh/.test(navigator.userAgent) && (navigator.maxTouchPoints ?? 0) > 1))
+    (/Macintosh/.test(navigator.userAgent) &&
+      (navigator.maxTouchPoints ?? 0) > 1))
 
-const AAC_FREQ_TABLE = [
-  96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350,
+/** Sample rates addressable by an AAC sampling-frequency index. */
+const AAC_SAMPLE_RATE_TABLE = [
+  96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025,
+  8000, 7350,
 ]
 
-// Clock-ratio estimation (screen clock vs this device's audio clock) used for background
-// free-run: play at the measured ratio rather than a blind 1.0, which drifts by the clocks'
-// ppm difference for as long as the screen is asleep.
+// Clock-ratio estimation (screen clock vs this device's audio clock) used for
+// background free-run: play at the measured ratio rather than a blind 1.0,
+// which drifts by the clocks' ppm difference for as long as the screen is
+// asleep.
 const RATIO_WINDOW_SEC = 90 // regression window of recent samples
 const RATIO_MIN_SPAN_SEC = 20 // need this much span before trusting the estimate
+const RATIO_MIN_SAMPLES = 20 // …and at least this many samples
 const RATIO_MAX_DEV = 0.005 // clamp to ±0.5% — a bigger "ratio" is noise/seek, not a real clock
 
 const HEAD_CHUNK_BYTES = 2 * 1024 * 1024 // grow the moov fetch in 2 MB steps
 const MAX_HEAD_BYTES = 24 * 1024 * 1024 // cap the moov search (covers many hours of audio)
 
 /**
- * Per-sample metadata parsed from the moov (byte offset/size in the file + timing), stored as
- * parallel typed arrays so we can range-fetch just the bytes a window needs instead of holding
- * the whole compressed file in memory. This is what keeps the tab under Android's discard line.
+ * Per-sample metadata parsed from the moov (byte offset/size in the file +
+ * timing), stored as parallel typed arrays so we can range-fetch just the
+ * bytes a window needs instead of holding the whole compressed file in memory.
+ * This is what keeps the tab under Android's discard line.
  */
 interface SampleTable {
-  offset: Float64Array // byte offset of each sample in the file
+  /** Byte offset of each sample within the file. */
+  offset: Float64Array
+  /** Byte length of each sample. */
   size: Float64Array
-  start: Float64Array // sample start time (seconds)
-  dur: Float64Array // sample duration (seconds)
-  n: number
+  /** Start time of each sample, in seconds. */
+  start: Float64Array
+  /** Duration of each sample, in seconds. */
+  duration: Float64Array
+  /** How many samples the table holds. */
+  count: number
 }
 
+/** A decoded slice of PCM covering one window of the timeline. */
 interface DecodedWindow {
+  /** Decoded PCM for this window. */
   buffer: AudioBuffer
-  startSec: number // track-second at buffer offset 0
+  /** Track-second that sits at buffer offset 0. */
+  startSec: number
 }
 
-/** AAC-LC AudioSpecificConfig (2 bytes) built from the track params — the WebCodecs `description`. */
-function buildAacLcAsc(sampleRate: number, channels: number): Uint8Array | null {
-  const freqIdx = AAC_FREQ_TABLE.indexOf(sampleRate)
-  if (freqIdx < 0) return null
+/** One (audio-clock, screen-target) pair feeding the clock-ratio regression. */
+interface ClockRatioSample {
+  /** AudioContext time when the sample was taken, in seconds. */
+  contextSec: number
+  /** Unwrapped screen target time at that instant, in seconds. */
+  targetSec: number
+}
+
+/**
+ * Build the AAC-LC AudioSpecificConfig (2 bytes) from the track params — the
+ * WebCodecs `description`. Returns `null` for a sample rate AAC can't index.
+ */
+function buildAacLcAsc(
+  sampleRate: number,
+  channelCount: number,
+): Uint8Array | null {
+  const frequencyIndex = AAC_SAMPLE_RATE_TABLE.indexOf(sampleRate)
+
+  if (frequencyIndex < 0) {
+    return null
+  }
+
   const objectType = 2 // AAC-LC
-  const b0 = (objectType << 3) | (freqIdx >> 1)
-  const b1 = ((freqIdx & 1) << 7) | (channels << 3)
-  return new Uint8Array([b0, b1])
+  const firstByte = (objectType << 3) | (frequencyIndex >> 1)
+  const secondByte = ((frequencyIndex & 1) << 7) | (channelCount << 3)
+
+  return new Uint8Array([firstByte, secondByte])
 }
 
+/**
+ * Long-form follower audio engine: decodes a sliding WebCodecs window of the
+ * soundtrack and plays it on the AudioContext clock, so memory stays flat
+ * however long the track is.
+ */
 export class StreamingBufferEngine implements FollowerAudioEngine {
   private ctx: AudioContext | null = null
   private streamDest: MediaStreamAudioDestinationNode | null = null
-  private sinkEl: HTMLAudioElement | null = null
+  private sinkElement: HTMLAudioElement | null = null
   private masterGain: GainNode | null = null
-  // Output mix: masterGain feeds BOTH legs permanently and we cross-fade between them, rather than
-  // disconnecting/reconnecting. The sink leg is never fully off (see KEEPALIVE_GAIN) so its <audio>
-  // element keeps playing for the whole session and Chrome never freezes the page.
+  // Output mix: masterGain feeds BOTH legs permanently and we cross-fade
+  // between them, rather than disconnecting/reconnecting. The sink leg is
+  // never fully off (see KEEPALIVE_GAIN) so its <audio> element keeps playing
+  // for the whole session and Chrome never freezes the page.
   private directGain: GainNode | null = null
   private sinkGain: GainNode | null = null
   private audible = false
 
-  // Demux state: only the sample table (byte offsets/timing) is kept; sample DATA is
-  // range-fetched per window on demand.
+  // Demux state: only the sample table (byte offsets/timing) is kept; sample
+  // DATA is range-fetched per window on demand.
   private table: SampleTable | null = null
   private demuxedUrl: string | null = null
   private loadingUrl: string | null = null
   private desiredUrl: string | null = null
   private codec = ''
-  private asc: Uint8Array | null = null
+  private audioSpecificConfig: Uint8Array | null = null
   private sampleRate = 44100
-  private channels = 2
+  private channelCount = 2
   private totalSec = 0
 
   // Window / playback state.
-  private curWindow: DecodedWindow | null = null
-  private srcWindow: DecodedWindow | null = null
-  private pendingStart: number | null = null // track-sec a decode is in flight for (null = none)
-  private src: AudioBufferSourceNode | null = null
+  private latestWindow: DecodedWindow | null = null // most recently decoded window
+  private sourceWindow: DecodedWindow | null = null // window the live source plays
+  private pendingStartSec: number | null = null // track-sec a decode is in flight for (null = none)
+  private source: AudioBufferSourceNode | null = null
   private startCtxTime = 0
   private startOffset = 0 // track-sec at startCtxTime
   private rate = 1
   private smoothedDriftSec = 0
   private lastRestartAt = 0
-  // Measured output latency for the DIRECT (ctx.destination) path. The sink path's latency is this
-  // plus SINK_SWITCH_LATENCY_SEC — see activeLatencySec. Keeping them separate matters because the
-  // physical latency changes the instant we switch paths, while an EMA can only crawl.
+  // Measured output latency for the DIRECT (ctx.destination) path. The sink
+  // path's latency is this plus SINK_SWITCH_LATENCY_SEC — see
+  // activeLatencySec. Keeping them separate matters because the physical
+  // latency changes the instant we switch paths, while an EMA can only crawl.
   private measuredLatencySec = 0
   private hardStopped = false
-  // Bumped on every graph transition (background enter/exit, resync, stop). Async decodes and
-  // the chain builder capture it and bail if it changed — so work started before a transition
-  // (e.g. an in-flight decode during sleep) can't schedule onto the graph as it's being reset,
-  // which was crashing the renderer a moment after waking.
-  private gen = 0
-  // Background free-run: extra sources chained ahead on the audio thread so playback survives
-  // the correction timer being throttled while the screen is locked.
+  // Bumped on every graph transition (background enter/exit, resync, stop).
+  // Async decodes and the chain builder capture it and bail if it changed — so
+  // work started before a transition (e.g. an in-flight decode during sleep)
+  // can't schedule onto the graph as it's being reset, which was crashing the
+  // renderer a moment after waking.
+  private generation = 0
+  // Background free-run: extra sources chained ahead on the audio thread so
+  // playback survives the correction timer being throttled while the screen is
+  // locked.
   private backgrounded = false
-  private chained: AudioBufferSourceNode[] = []
+  private chainedSources: AudioBufferSourceNode[] = []
   private chainEndsAtCtx = 0 // context time the scheduled chain runs out (0 = no chain)
   private chainTrackEnd = 0 // track-sec the chain currently covers up to (for top-ups)
   private chainBuilding = false // guards buildChain against overlapping runs
   private latencyHoldUntilCtx = 0 // suppress latency re-estimation until this context time
   private freeRunRate = 1 // rate the chain was scheduled at (measured clock ratio)
-  // Steady-state rate to hold when locked: the measured screen:device clock ratio. Persists across
-  // sleeps and estimator resets, so we never snap back to a 1.0 we know to be wrong.
+  // Steady-state rate to hold when locked: the measured screen:device clock
+  // ratio. Persists across sleeps and estimator resets, so we never snap back
+  // to a 1.0 we know to be wrong.
   private holdRate = 1
   // Clock-ratio estimator state (see recordClockRatioSample).
-  private ratioSamples: { x: number; y: number }[] = []
-  private ratioAccum = -1 // unwrapped target seconds (-1 = not started)
-  private lastRatioTarget = 0
-  private usingSink = false // master gain currently routed to the keep-alive sink vs the speakers
+  private ratioSamples: ClockRatioSample[] = []
+  private ratioAccumSec = -1 // unwrapped target seconds (-1 = not started)
+  private lastRatioTargetSec = 0
+  private usingSink = false // master gain routed to the keep-alive sink vs the speakers
 
   private readonly onLoadFailed: (url: string) => void
+
+  /** Whether {@link unlock} has run inside a user gesture. */
   unlocked = false
 
+  /**
+   * @param onLoadFailed called with the URL when demux/decode is impossible,
+   *   so the controller can fall back to the <audio> element path
+   */
   constructor(onLoadFailed: (url: string) => void) {
     this.onLoadFailed = onLoadFailed
   }
 
-  // ─── Output stage (mirrors BufferAudioEngine: context + keep-alive sink + master gain) ───
+  // ─── Output stage (mirrors BufferAudioEngine: context + keep-alive sink +
+  //     master gain) ───
 
+  /**
+   * Prepare the audio graph. Must be called inside the join tap: context
+   * creation, resume and the sink's `play()` all need the gesture.
+   */
   unlock(): Promise<void> {
     this.hardStopped = false
-    const Ctx =
+
+    const AudioContextCtor =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctx) return Promise.reject(new Error('Web Audio unavailable'))
-    if (typeof AudioDecoder === 'undefined') return Promise.reject(new Error('WebCodecs unavailable'))
-    if (!this.ctx) this.ctx = new Ctx()
+      (
+        window as unknown as {
+          webkitAudioContext?: typeof AudioContext
+        }
+      ).webkitAudioContext
+
+    if (!AudioContextCtor) {
+      return Promise.reject(new Error('Web Audio unavailable'))
+    }
+
+    if (typeof AudioDecoder === 'undefined') {
+      return Promise.reject(new Error('WebCodecs unavailable'))
+    }
+
+    if (!this.ctx) {
+      this.ctx = new AudioContextCtor()
+    }
+
     if (!this.streamDest) {
       try {
         this.streamDest = this.ctx.createMediaStreamDestination()
-        const el = new Audio()
-        el.autoplay = true
-        ;(el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
-        el.setAttribute('playsinline', '')
-        el.srcObject = this.streamDest.stream
-        this.sinkEl = el
-        void el.play().catch(() => {})
+
+        const element = new Audio()
+        element.autoplay = true
+        ;(
+          element as HTMLAudioElement & { playsInline?: boolean }
+        ).playsInline = true
+        element.setAttribute('playsinline', '')
+        element.srcObject = this.streamDest.stream
+        this.sinkElement = element
+        element.play().catch(() => {})
       } catch {
         this.streamDest = null
       }
     }
+
     if (!this.masterGain) {
       const ctx = this.ctx
       this.masterGain = ctx.createGain()
       this.masterGain.gain.value = 0
-      // Wire both output legs once and keep them wired; connectOutput only changes their gains.
+
+      // Wire both output legs once and keep them wired; connectOutput only
+      // changes their gains.
       this.directGain = ctx.createGain()
       this.masterGain.connect(this.directGain)
       this.directGain.connect(ctx.destination)
+
       if (this.streamDest) {
         this.sinkGain = ctx.createGain()
         this.masterGain.connect(this.sinkGain)
         this.sinkGain.connect(this.streamDest)
       }
-      this.connectOutput(IS_IOS) // iOS → sink; Android/desktop → speakers + keep-alive tap
+
+      // iOS → sink; Android/desktop → speakers + keep-alive tap.
+      this.connectOutput(IS_IOS)
     }
+
     try {
-      const silent = this.ctx.createBuffer(1, 1, this.ctx.sampleRate)
-      const s = this.ctx.createBufferSource()
-      s.buffer = silent
-      s.connect(this.ctx.destination)
-      s.start()
+      const silence = this.ctx.createBuffer(1, 1, this.ctx.sampleRate)
+      const primer = this.ctx.createBufferSource()
+      primer.buffer = silence
+      primer.connect(this.ctx.destination)
+      primer.start()
     } catch {
       /* priming is best-effort */
     }
-    const resume = this.ctx.state !== 'running' ? this.ctx.resume() : Promise.resolve()
+
+    const resumed =
+      this.ctx.state !== 'running' ? this.ctx.resume() : Promise.resolve()
     this.unlocked = true
-    return resume.catch(() => {})
+
+    return resumed.catch(() => {})
   }
 
+  /** Nudge the context and keep-alive element back to life after a suspend. */
   resume(): void {
-    if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {})
-    if (this.sinkEl && this.sinkEl.paused) {
-      if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing'
-      void this.sinkEl.play().catch(() => {})
+    if (this.ctx && this.ctx.state !== 'running') {
+      this.ctx.resume().catch(() => {})
+    }
+
+    if (this.sinkElement && this.sinkElement.paused) {
+      if (navigator.mediaSession) {
+        navigator.mediaSession.playbackState = 'playing'
+      }
+
+      this.sinkElement.play().catch(() => {})
     }
   }
 
+  /** Whether the lock-screen keep-alive sink is wired up. */
   get backgroundKeepAlive(): boolean {
     return this.streamDest != null
   }
@@ -296,324 +410,547 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   /**
-   * Choose which leg is *audible*: the speakers (foreground) or the keep-alive sink (background).
-   * The sink leg is never taken to zero — it stays at KEEPALIVE_GAIN so its <audio> element keeps
-   * playing continuously, which is what stops Chrome freezing the page (and killing WebRTC with it).
-   * Cross-fading gains rather than re-connecting also avoids a click at the switch.
+   * Choose which leg is *audible*: the speakers (foreground) or the keep-alive
+   * sink (background).
+   *
+   * The sink leg is never taken to zero — it stays at KEEPALIVE_GAIN so its
+   * <audio> element keeps playing continuously, which is what stops Chrome
+   * freezing the page (and killing WebRTC with it). Cross-fading gains rather
+   * than re-connecting also avoids a click at the switch.
    */
   private connectOutput(useSink: boolean): void {
-    if (!this.ctx || !this.directGain) return
-    const sink = useSink && this.streamDest != null
-    const t = this.ctx.currentTime
-    const ramp = (g: GainNode | null, to: number) => {
-      if (!g) return
-      g.gain.cancelScheduledValues(t)
-      g.gain.setValueAtTime(g.gain.value, t)
-      g.gain.linearRampToValueAtTime(to, t + DECLICK_SEC)
+    if (!this.ctx || !this.directGain) {
+      return
     }
+
+    const sink = useSink && this.streamDest != null
+    const now = this.ctx.currentTime
+
+    const ramp = (gainNode: GainNode | null, to: number) => {
+      if (!gainNode) {
+        return
+      }
+
+      gainNode.gain.cancelScheduledValues(now)
+      gainNode.gain.setValueAtTime(gainNode.gain.value, now)
+      gainNode.gain.linearRampToValueAtTime(to, now + DECLICK_SEC)
+    }
+
     ramp(this.directGain, sink ? 0 : 1)
     ramp(this.sinkGain, sink ? 1 : KEEPALIVE_GAIN)
     this.usingSink = sink
   }
 
-  // ─── Load: fetch ONLY the moov and build the sample table (data is range-fetched per window) ───
+  // ─── Load: fetch ONLY the moov and build the sample table (data is
+  //     range-fetched per window) ───
 
+  /** Point the engine at a soundtrack and start demuxing its sample table. */
   setSource(url: string): void {
-    if (!url) return
+    if (!url) {
+      return
+    }
+
     this.desiredUrl = url
-    if (this.demuxedUrl !== url && this.loadingUrl !== url && this.ctx) void this.loadMetadata(url)
+
+    if (this.demuxedUrl !== url && this.loadingUrl !== url && this.ctx) {
+      this.loadMetadata(url)
+    }
   }
 
+  /** Whether the sample table for `url` is demuxed and ready to decode from. */
   hasBufferFor(url: string): boolean {
     return this.demuxedUrl === url && this.table != null
   }
 
   private async loadMetadata(url: string): Promise<void> {
     this.loadingUrl = url
+
     try {
       const { createFile } = await import('mp4box')
       const file = createFile()
       let info: import('mp4box').Movie | null = null
       file.onError = () => {}
-      file.onReady = (i) => {
-        info = i
+      file.onReady = ready => {
+        info = ready
       }
-      // Fetch the file head in chunks until the moov is parsed (faststart puts it up front).
-      let headEnd = 0
-      while (!info && headEnd < MAX_HEAD_BYTES) {
-        const res = await fetch(url, { headers: { Range: `bytes=${headEnd}-${headEnd + HEAD_CHUNK_BYTES - 1}` } })
-        if (!res.ok) throw new Error(`fetch ${res.status}`)
-        if (this.desiredUrl !== url) return
-        const part = await res.arrayBuffer()
-        const mp4buf = part as ArrayBuffer & { fileStart: number }
-        mp4buf.fileStart = headEnd
-        file.appendBuffer(mp4buf) // onReady fires synchronously once the moov is complete
-        headEnd += part.byteLength
-        if (part.byteLength < HEAD_CHUNK_BYTES) break // reached EOF
-      }
-      if (!info) throw new Error('moov not found')
-      const track = (info as import('mp4box').Movie).audioTracks?.[0]
-      if (!track || !track.audio) throw new Error('no audio track')
-      if (!track.codec.startsWith('mp4a.40')) throw new Error(`unsupported codec ${track.codec}`)
-      const asc = buildAacLcAsc(track.audio.sample_rate, track.audio.channel_count)
-      if (!asc) throw new Error(`unsupported sample rate ${track.audio.sample_rate}`)
 
-      // Build the sample table from the moov (offsets/sizes/timing) — no sample DATA needed.
+      // Fetch the file head in chunks until the moov is parsed (faststart puts
+      // it up front).
+      let headEnd = 0
+
+      while (!info && headEnd < MAX_HEAD_BYTES) {
+        const response = await fetch(url, {
+          headers: {
+            Range: `bytes=${headEnd}-${headEnd + HEAD_CHUNK_BYTES - 1}`,
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`fetch ${response.status}`)
+        }
+
+        if (this.desiredUrl !== url) {
+          return
+        }
+
+        const part = await response.arrayBuffer()
+        const mp4Buffer = part as ArrayBuffer & { fileStart: number }
+        mp4Buffer.fileStart = headEnd
+        // onReady fires synchronously once the moov is complete.
+        file.appendBuffer(mp4Buffer)
+        headEnd += part.byteLength
+
+        if (part.byteLength < HEAD_CHUNK_BYTES) {
+          break // reached EOF
+        }
+      }
+
+      if (!info) {
+        throw new Error('moov not found')
+      }
+
+      const track = (info as import('mp4box').Movie).audioTracks?.[0]
+
+      if (!track || !track.audio) {
+        throw new Error('no audio track')
+      }
+
+      if (!track.codec.startsWith('mp4a.40')) {
+        throw new Error(`unsupported codec ${track.codec}`)
+      }
+
+      const audioSpecificConfig = buildAacLcAsc(
+        track.audio.sample_rate,
+        track.audio.channel_count,
+      )
+
+      if (!audioSpecificConfig) {
+        throw new Error(`unsupported sample rate ${track.audio.sample_rate}`)
+      }
+
+      // Build the sample table from the moov (offsets/sizes/timing) — no
+      // sample DATA needed.
       file.setExtractionOptions(track.id, null, { nbSamples: 1 })
       file.start()
+
       const samples = file.getTrackById(track.id).samples
-      const n = samples.length
-      const offset = new Float64Array(n)
-      const size = new Float64Array(n)
-      const start = new Float64Array(n)
-      const dur = new Float64Array(n)
-      for (let i = 0; i < n; i++) {
-        const s = samples[i]
-        offset[i] = s.offset
-        size[i] = s.size
-        start[i] = s.cts / s.timescale
-        dur[i] = s.duration / s.timescale
+      const count = samples.length
+      const offset = new Float64Array(count)
+      const size = new Float64Array(count)
+      const start = new Float64Array(count)
+      const duration = new Float64Array(count)
+
+      for (let index = 0; index < count; index++) {
+        const sample = samples[index]
+        offset[index] = sample.offset
+        size[index] = sample.size
+        start[index] = sample.cts / sample.timescale
+        duration[index] = sample.duration / sample.timescale
       }
+
       file.stop()
-      if (this.desiredUrl !== url) return
+
+      if (this.desiredUrl !== url) {
+        return
+      }
 
       this.codec = track.codec
       this.sampleRate = track.audio.sample_rate
-      this.channels = track.audio.channel_count
-      this.asc = asc
-      this.totalSec = n ? start[n - 1] + dur[n - 1] : 0
-      this.table = { offset, size, start, dur, n }
+      this.channelCount = track.audio.channel_count
+      this.audioSpecificConfig = audioSpecificConfig
+      this.totalSec = count ? start[count - 1] + duration[count - 1] : 0
+      this.table = { offset, size, start, duration, count }
       this.demuxedUrl = url
-      // mp4box's file (with its own copy of the sample structures) can now be dropped.
+      // mp4box's file (with its own copy of the sample structures) can now be
+      // dropped.
     } catch {
-      if (this.desiredUrl === url) this.onLoadFailed(url)
+      if (this.desiredUrl === url) {
+        this.onLoadFailed(url)
+      }
     } finally {
-      if (this.loadingUrl === url) this.loadingUrl = null
+      if (this.loadingUrl === url) {
+        this.loadingUrl = null
+      }
     }
   }
 
-  /** First sample index whose start time is >= sec (binary search over the sorted table). */
+  /**
+   * First sample index whose start time is >= `sec` (binary search over the
+   * sorted table).
+   */
   private lowerBound(sec: number): number {
-    const t = this.table!
-    let lo = 0
-    let hi = t.n
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      if (t.start[mid] < sec) lo = mid + 1
-      else hi = mid
+    const table = this.table!
+    let low = 0
+    let high = table.count
+
+    while (low < high) {
+      const mid = (low + high) >> 1
+
+      if (table.start[mid] < sec) {
+        low = mid + 1
+      } else {
+        high = mid
+      }
     }
-    return lo
+
+    return low
   }
 
-  /** Decode a PCM window covering [startSec, startSec+WINDOW_SEC], range-fetching just its bytes. */
+  /**
+   * Decode a PCM window covering `[startSec, startSec + WINDOW_SEC]`,
+   * range-fetching just the compressed bytes it needs.
+   */
   private async decodeWindow(startSec: number): Promise<DecodedWindow | null> {
     const ctx = this.ctx
-    const t = this.table
+    const table = this.table
     const url = this.demuxedUrl
-    if (!ctx || !t || !url || !this.asc) return null
-    const gen = this.gen // bail if a background/resync/stop transition happens mid-decode
-    const winStart = Math.max(0, Math.min(startSec, Math.max(0, this.totalSec - WINDOW_SEC)))
-    const winLen = Math.min(WINDOW_SEC, this.totalSec - winStart)
-    if (winLen <= 0) return null
 
-    // Sample index range covering [winStart - preroll, winStart + winLen].
-    const decodeFrom = Math.max(0, winStart - PREROLL_SEC)
-    const decodeTo = winStart + winLen
-    let i0 = this.lowerBound(decodeFrom)
-    if (i0 > 0) i0-- // include the sample straddling the start
-    let i1 = this.lowerBound(decodeTo) - 1
-    if (i1 < i0) i1 = i0
-    if (i1 >= t.n) i1 = t.n - 1
+    if (!ctx || !table || !url || !this.audioSpecificConfig) {
+      return null
+    }
 
-    // Range-fetch exactly the compressed bytes for those samples (contiguous in the mdat).
-    const lo = t.offset[i0]
-    const hi = t.offset[i1] + t.size[i1]
-    const res = await fetch(url, { headers: { Range: `bytes=${lo}-${hi - 1}` } })
-    if (!res.ok) throw new Error(`range ${res.status}`)
-    const bytes = new Uint8Array(await res.arrayBuffer())
-    if (this.desiredUrl !== this.demuxedUrl || this.gen !== gen || !this.ctx) return null
+    // Captured so the decode can bail if a background/resync/stop transition
+    // happens while it is in flight.
+    const generation = this.generation
 
-    const sr = this.sampleRate
-    const ch = this.channels
-    const frameCount = Math.ceil(winLen * sr)
-    const channelData = Array.from({ length: ch }, () => new Float32Array(frameCount))
+    const windowStart = Math.max(
+      0,
+      Math.min(startSec, Math.max(0, this.totalSec - WINDOW_SEC)),
+    )
+    const windowLength = Math.min(WINDOW_SEC, this.totalSec - windowStart)
+
+    if (windowLength <= 0) {
+      return null
+    }
+
+    // Sample index range covering [windowStart - preroll, windowStart + len].
+    const decodeFrom = Math.max(0, windowStart - PREROLL_SEC)
+    const decodeTo = windowStart + windowLength
+    let firstSample = this.lowerBound(decodeFrom)
+
+    if (firstSample > 0) {
+      firstSample-- // include the sample straddling the start
+    }
+
+    let lastSample = this.lowerBound(decodeTo) - 1
+
+    if (lastSample < firstSample) {
+      lastSample = firstSample
+    }
+
+    if (lastSample >= table.count) {
+      lastSample = table.count - 1
+    }
+
+    // Range-fetch exactly the compressed bytes for those samples (contiguous
+    // in the mdat).
+    const byteStart = table.offset[firstSample]
+    const byteEnd = table.offset[lastSample] + table.size[lastSample]
+    const response = await fetch(url, {
+      headers: { Range: `bytes=${byteStart}-${byteEnd - 1}` },
+    })
+
+    if (!response.ok) {
+      throw new Error(`range ${response.status}`)
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+
+    if (this.isStale(generation)) {
+      return null
+    }
+
+    const sampleRate = this.sampleRate
+    const channelCount = this.channelCount
+    const frameCount = Math.ceil(windowLength * sampleRate)
+    const channelData = Array.from(
+      { length: channelCount },
+      () => new Float32Array(frameCount),
+    )
 
     await new Promise<void>((resolve, reject) => {
       let decoder: AudioDecoder
+
+      const closeDecoder = () => {
+        try {
+          if (decoder.state !== 'closed') {
+            decoder.close()
+          }
+        } catch {
+          /* already closed */
+        }
+      }
+
       try {
         decoder = new AudioDecoder({
-          output: (ad) => {
-            const base = Math.round((ad.timestamp / 1e6 - winStart) * sr)
-            const n = ad.numberOfFrames
+          output: audioData => {
+            // Where this decoded frame lands within the window's PCM.
+            const base = Math.round(
+              (audioData.timestamp / 1e6 - windowStart) * sampleRate,
+            )
+            const frames = audioData.numberOfFrames
             const destStart = Math.max(0, base)
-            const destEnd = Math.min(frameCount, base + n)
+            const destEnd = Math.min(frameCount, base + frames)
+
             if (destEnd <= destStart) {
-              ad.close()
+              audioData.close()
+
               return
             }
+
             const srcStart = destStart - base
-            const copyLen = destEnd - destStart
-            const tmp = new Float32Array(n)
-            for (let c = 0; c < ch; c++) {
+            const copyLength = destEnd - destStart
+            const plane = new Float32Array(frames)
+
+            for (let channel = 0; channel < channelCount; channel++) {
               try {
-                ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' })
+                audioData.copyTo(plane, {
+                  planeIndex: channel,
+                  format: 'f32-planar',
+                })
               } catch {
-                ad.close()
+                audioData.close()
+
                 return
               }
-              channelData[c].set(tmp.subarray(srcStart, srcStart + copyLen), destStart)
+
+              channelData[channel].set(
+                plane.subarray(srcStart, srcStart + copyLength),
+                destStart,
+              )
             }
-            ad.close()
+
+            audioData.close()
           },
-          error: (e) => {
+          error: error => {
             closeDecoder()
-            reject(e)
+            reject(error)
           },
         })
-        const closeDecoder = () => {
-          try {
-            if (decoder.state !== 'closed') decoder.close()
-          } catch {
-            /* already closed */
-          }
-        }
+
         decoder.configure({
           codec: this.codec,
-          sampleRate: sr,
-          numberOfChannels: ch,
-          description: this.asc!,
+          sampleRate,
+          numberOfChannels: channelCount,
+          description: this.audioSpecificConfig!,
         })
-        for (let i = i0; i <= i1; i++) {
-          const view = bytes.subarray(t.offset[i] - lo, t.offset[i] - lo + t.size[i])
+
+        for (let index = firstSample; index <= lastSample; index++) {
+          const sampleStart = table.offset[index] - byteStart
+          const view = bytes.subarray(
+            sampleStart,
+            sampleStart + table.size[index],
+          )
+
           decoder.decode(
             new EncodedAudioChunk({
               type: 'key',
-              timestamp: t.start[i] * 1e6,
-              duration: t.dur[i] * 1e6,
+              timestamp: table.start[index] * 1e6,
+              duration: table.duration[index] * 1e6,
               data: view,
             }),
           )
         }
+
         decoder
           .flush()
           .then(() => {
             closeDecoder()
             resolve()
           })
-          .catch((e) => {
+          .catch(error => {
             closeDecoder()
-            reject(e)
+            reject(error)
           })
-      } catch (e) {
-        reject(e instanceof Error ? e : new Error(String(e)))
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)))
       }
     })
 
-    if (this.desiredUrl !== this.demuxedUrl || this.gen !== gen || !this.ctx) return null
-    const buffer = ctx.createBuffer(ch, frameCount, sr)
-    for (let c = 0; c < ch; c++) buffer.copyToChannel(channelData[c], c)
-    return { buffer, startSec: winStart }
+    if (this.isStale(generation)) {
+      return null
+    }
+
+    const buffer = ctx.createBuffer(channelCount, frameCount, sampleRate)
+
+    for (let channel = 0; channel < channelCount; channel++) {
+      buffer.copyToChannel(channelData[channel], channel)
+    }
+
+    return { buffer, startSec: windowStart }
   }
 
-  /** Kick a window decode for `aim` if nothing covers it and none is already in flight. */
+  /**
+   * Whether work started at `generation` has been invalidated — by a graph
+   * transition or by the desired source moving on.
+   */
+  private isStale(generation: number): boolean {
+    return (
+      this.desiredUrl !== this.demuxedUrl ||
+      this.generation !== generation ||
+      !this.ctx
+    )
+  }
+
+  /**
+   * Kick a window decode for `aim` if nothing covers it and none is already in
+   * flight.
+   */
   private ensureDecode(aim: number): void {
-    if (this.pendingStart != null) return
-    if (this.curWindow && this.covers(this.curWindow, aim, 0)) return
+    if (this.pendingStartSec != null) {
+      return
+    }
+
+    if (this.latestWindow && this.covers(this.latestWindow, aim, 0)) {
+      return
+    }
+
     this.decodeInto(Math.max(0, aim - PREROLL_SEC))
   }
 
   /**
-   * Prefetch the NEXT window by start position. Unlike ensureDecode this must NOT gate on the
-   * current window "covering" that point — the current window overlaps the next one's start, so
-   * a coverage check would always skip and the next window would never decode until the current
-   * ran out (the ~1 s swap gap). Only skip if we already have/are fetching that exact window.
+   * Prefetch the NEXT window by start position. Unlike {@link ensureDecode}
+   * this must NOT gate on the current window "covering" that point — the
+   * current window overlaps the next one's start, so a coverage check would
+   * always skip and the next window would never decode until the current ran
+   * out (the ~1 s swap gap). Only skip if we already have (or are fetching)
+   * that exact window.
    */
   private prefetchAt(startSec: number): void {
-    if (this.pendingStart != null) return
-    if (this.curWindow && Math.abs(this.curWindow.startSec - startSec) < 1) return
+    if (this.pendingStartSec != null) {
+      return
+    }
+
+    if (
+      this.latestWindow &&
+      Math.abs(this.latestWindow.startSec - startSec) < 1
+    ) {
+      return
+    }
+
     this.decodeInto(startSec)
   }
 
-  private decodeInto(start: number): void {
-    this.pendingStart = start
-    void this.decodeWindow(start)
-      .then((w) => {
-        if (w) this.curWindow = w
+  private decodeInto(startSec: number): void {
+    this.pendingStartSec = startSec
+
+    this.decodeWindow(startSec)
+      .then(decoded => {
+        if (decoded) {
+          this.latestWindow = decoded
+        }
       })
       .catch(() => {})
       .finally(() => {
-        if (this.pendingStart === start) this.pendingStart = null
+        if (this.pendingStartSec === startSec) {
+          this.pendingStartSec = null
+        }
       })
   }
 
-  private covers(w: DecodedWindow, trackSec: number, margin: number): boolean {
-    return trackSec >= w.startSec + margin && trackSec <= w.startSec + w.buffer.duration - margin
+  /** Whether `trackSec` sits inside `decoded`, `margin` clear of both edges. */
+  private covers(
+    decoded: DecodedWindow,
+    trackSec: number,
+    margin: number,
+  ): boolean {
+    return (
+      trackSec >= decoded.startSec + margin &&
+      trackSec <= decoded.startSec + decoded.buffer.duration - margin
+    )
   }
 
   // ─── Gain helpers (identical model to BufferAudioEngine) ───
 
   private mute(): void {
     this.audible = false
-    const g = this.masterGain?.gain
-    if (!g || !this.ctx) return
+
+    const gain = this.masterGain?.gain
+
+    if (!gain || !this.ctx) {
+      return
+    }
+
     const now = this.ctx.currentTime
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(g.value, now)
-    g.linearRampToValueAtTime(0, now + DECLICK_SEC)
+    gain.cancelScheduledValues(now)
+    gain.setValueAtTime(gain.value, now)
+    gain.linearRampToValueAtTime(0, now + DECLICK_SEC)
   }
 
   private unmute(): void {
-    if (this.audible) return
+    if (this.audible) {
+      return
+    }
+
     this.audible = true
-    const g = this.masterGain?.gain
-    if (!g || !this.ctx) return
+
+    const gain = this.masterGain?.gain
+
+    if (!gain || !this.ctx) {
+      return
+    }
+
     const now = this.ctx.currentTime
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(g.value, now)
-    g.linearRampToValueAtTime(1, now + UNMUTE_SEC)
+    gain.cancelScheduledValues(now)
+    gain.setValueAtTime(gain.value, now)
+    gain.linearRampToValueAtTime(1, now + UNMUTE_SEC)
   }
 
   private declickSwap(when: number): void {
-    const g = this.masterGain?.gain
-    if (!g || !this.audible || !this.ctx) return
+    const gain = this.masterGain?.gain
+
+    if (!gain || !this.audible || !this.ctx) {
+      return
+    }
+
     const now = this.ctx.currentTime
-    g.cancelScheduledValues(now)
-    g.setValueAtTime(1, Math.max(now, when - DECLICK_SEC))
-    g.linearRampToValueAtTime(0, when)
-    g.linearRampToValueAtTime(1, when + DECLICK_SEC)
+    gain.cancelScheduledValues(now)
+    gain.setValueAtTime(1, Math.max(now, when - DECLICK_SEC))
+    gain.linearRampToValueAtTime(0, when)
+    gain.linearRampToValueAtTime(1, when + DECLICK_SEC)
   }
 
   private stopSource(): void {
-    const src = this.src
-    this.src = null
-    this.srcWindow = null
-    if (!src) return
-    const g = this.masterGain?.gain
-    if (this.ctx && g) {
-      const now = this.ctx.currentTime
-      g.cancelScheduledValues(now)
-      g.setValueAtTime(g.value, now)
-      g.linearRampToValueAtTime(0, now + DECLICK_SEC)
-      this.audible = false
+    const source = this.source
+    this.source = null
+    this.sourceWindow = null
+
+    if (!source) {
+      return
+    }
+
+    const gain = this.masterGain?.gain
+
+    if (!this.ctx || !gain) {
       try {
-        src.stop(now + DECLICK_SEC)
+        source.stop()
       } catch {
         /* already stopped */
       }
-      src.onended = () => {
-        try {
-          src.disconnect()
-        } catch {
-          /* ignore */
-        }
-      }
-    } else {
+
+      source.disconnect()
+
+      return
+    }
+
+    const now = this.ctx.currentTime
+    gain.cancelScheduledValues(now)
+    gain.setValueAtTime(gain.value, now)
+    gain.linearRampToValueAtTime(0, now + DECLICK_SEC)
+    this.audible = false
+
+    try {
+      source.stop(now + DECLICK_SEC)
+    } catch {
+      /* already stopped */
+    }
+
+    source.onended = () => {
       try {
-        src.stop()
+        source.disconnect()
       } catch {
-        /* already stopped */
+        /* ignore */
       }
-      src.disconnect()
     }
   }
 
@@ -622,358 +959,570 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   /**
-   * Start a source from window `w` at track position `aimTrackSec`, scheduled slightly ahead.
-   * `continuation` = a seamless slide into the next window (not a seek): the current rate and
-   * drift EMA are carried over so the nudge corrector keeps its state instead of resetting to
-   * 1 every ~45 s — otherwise steady drift never gets corrected and grows between slides.
+   * Start a source from `decoded` at track position `aimTrackSec`, scheduled
+   * slightly ahead.
+   *
+   * @param continuation a seamless slide into the next window (not a seek):
+   *   the current rate and drift EMA are carried over so the nudge corrector
+   *   keeps its state instead of resetting to 1 every ~45 s — otherwise steady
+   *   drift never gets corrected and grows between slides.
    */
-  private startAt(aimTrackSec: number, w: DecodedWindow, ctxNow: number, continuation = false): void {
+  private startAt(
+    aimTrackSec: number,
+    decoded: DecodedWindow,
+    ctxNow: number,
+    continuation = false,
+  ): void {
     const ctx = this.ctx!
-    const dur = w.buffer.duration
+    const duration = decoded.buffer.duration
     const rate = continuation ? this.rate : 1
-    const bufOffset = Math.min(Math.max(aimTrackSec - w.startSec, 0), Math.max(0, dur - 0.02))
-    const src = ctx.createBufferSource()
-    src.buffer = w.buffer
-    src.playbackRate.value = rate
-    src.connect(this.masterGain ?? this.outputNode())
+    const bufferOffset = Math.min(
+      Math.max(aimTrackSec - decoded.startSec, 0),
+      Math.max(0, duration - 0.02),
+    )
+
+    const source = ctx.createBufferSource()
+    source.buffer = decoded.buffer
+    source.playbackRate.value = rate
+    source.connect(this.masterGain ?? this.outputNode())
+
     const when = ctxNow + SCHEDULE_AHEAD_SEC
-    const startBufOffset = Math.min(bufOffset + SCHEDULE_AHEAD_SEC * rate, Math.max(0, dur - 0.001))
-    src.start(when, startBufOffset)
+    const startBufferOffset = Math.min(
+      bufferOffset + SCHEDULE_AHEAD_SEC * rate,
+      Math.max(0, duration - 0.001),
+    )
+    source.start(when, startBufferOffset)
     this.declickSwap(when)
-    const old = this.src
-    if (old) {
+
+    const previous = this.source
+
+    if (previous) {
       try {
-        old.stop(when + DECLICK_SEC)
+        previous.stop(when + DECLICK_SEC)
       } catch {
         /* already stopped */
       }
-      old.onended = () => {
+
+      previous.onended = () => {
         try {
-          old.disconnect()
+          previous.disconnect()
         } catch {
           /* ignore */
         }
       }
     }
-    this.src = src
-    this.srcWindow = w
+
+    this.source = source
+    this.sourceWindow = decoded
     this.startCtxTime = when
-    this.startOffset = w.startSec + startBufOffset
+    this.startOffset = decoded.startSec + startBufferOffset
     this.rate = rate
-    if (!continuation) this.smoothedDriftSec = 0
+
+    if (!continuation) {
+      this.smoothedDriftSec = 0
+    }
+
     this.lastRestartAt = Date.now()
   }
 
   private setRate(rate: number, ctxNow: number): void {
-    if (!this.src || Math.abs(rate - this.rate) <= RATE_EPS) return
+    if (!this.source || Math.abs(rate - this.rate) <= RATE_EPS) {
+      return
+    }
+
     this.forceRate(rate, ctxNow)
   }
 
   /**
-   * Set an EXACT rate, bypassing the RATE_EPS deadband. Free-run needs this: setRate(1) would
-   * early-return while the source still ran at up to 1±RATE_EPS (0.2% = ~120 ms drift per
-   * minute), and the chained sources — which are always created at exactly 1.0 — would then be
-   * scheduled against a primary running at a different speed, misaligning every seam.
+   * Set an EXACT rate, bypassing the RATE_EPS deadband. Free-run needs this:
+   * setRate(1) would early-return while the source still ran at up to
+   * 1±RATE_EPS (0.2% = ~120 ms drift per minute), and the chained sources —
+   * which are always created at exactly 1.0 — would then be scheduled against
+   * a primary running at a different speed, misaligning every seam.
    */
   private forceRate(rate: number, ctxNow: number): void {
-    if (!this.src) return
+    if (!this.source) {
+      return
+    }
+
     this.startOffset = this.positionSec(ctxNow)
     this.startCtxTime = ctxNow
     this.rate = rate
-    this.src.playbackRate.value = rate
+    this.source.playbackRate.value = rate
   }
 
   /**
-   * Record (screen target, context time) pairs so we can estimate the ratio between the screen's
-   * clock and this device's audio clock. Crystals differ by tens of ppm, so free-running at
-   * exactly 1.0 drifts steadily; free-running at the measured ratio tracks far better. Target is
-   * unwrapped (loop wraps / seeks are dropped) so the regression sees a monotone line.
+   * Record (screen target, context time) pairs so we can estimate the ratio
+   * between the screen's clock and this device's audio clock. Crystals differ
+   * by tens of ppm, so free-running at exactly 1.0 drifts steadily; free-running
+   * at the measured ratio tracks far better. Target is unwrapped (loop wraps /
+   * seeks are dropped) so the regression sees a monotone line.
    */
   private recordClockRatioSample(targetSec: number, ctxNow: number): void {
-    const d = targetSec - this.lastRatioTarget
-    this.lastRatioTarget = targetSec
-    // Only smooth forward advances feed the regression. A loop wrap, seek, or throttled gap would
-    // otherwise leave a flat spot that biases the slope, so those RESTART the window instead of
-    // being merely skipped (the estimate then falls back to 1 until clean span rebuilds).
-    if (this.ratioAccum >= 0 && d > 0 && d < 1) {
-      this.ratioAccum += d
-      this.ratioSamples.push({ x: ctxNow, y: this.ratioAccum })
+    const advance = targetSec - this.lastRatioTargetSec
+    this.lastRatioTargetSec = targetSec
+
+    // Only smooth forward advances feed the regression. A loop wrap, seek, or
+    // throttled gap would otherwise leave a flat spot that biases the slope,
+    // so those RESTART the window instead of being merely skipped (the
+    // estimate then falls back to 1 until clean span rebuilds).
+    if (this.ratioAccumSec >= 0 && advance > 0 && advance < 1) {
+      this.ratioAccumSec += advance
+      this.ratioSamples.push({
+        contextSec: ctxNow,
+        targetSec: this.ratioAccumSec,
+      })
+
       const cutoff = ctxNow - RATIO_WINDOW_SEC
-      while (this.ratioSamples.length > 2 && this.ratioSamples[0].x < cutoff) this.ratioSamples.shift()
-    } else {
-      if (this.ratioAccum < 0) this.ratioAccum = 0
-      this.ratioSamples.length = 0
+
+      while (
+        this.ratioSamples.length > 2 &&
+        this.ratioSamples[0].contextSec < cutoff
+      ) {
+        this.ratioSamples.shift()
+      }
+
+      return
     }
+
+    if (this.ratioAccumSec < 0) {
+      this.ratioAccumSec = 0
+    }
+
+    this.ratioSamples.length = 0
   }
 
   /**
-   * Least-squares slope of target-seconds per context-second (1 = clocks agree). Returns null when
-   * there isn't enough clean data to trust — callers then keep the last good value (`holdRate`)
-   * rather than snapping to 1.0, which would re-introduce drift.
+   * Least-squares slope of target-seconds per context-second (1 = clocks
+   * agree). Returns `null` when there isn't enough clean data to trust —
+   * callers then keep the last good value (`holdRate`) rather than snapping to
+   * 1.0, which would re-introduce drift.
    */
   private estimateClockRatio(): number | null {
-    const s = this.ratioSamples
-    if (s.length < 20) return null
-    const span = s[s.length - 1].x - s[0].x
-    if (span < RATIO_MIN_SPAN_SEC) return null
-    let sx = 0
-    let sy = 0
-    for (const p of s) {
-      sx += p.x
-      sy += p.y
+    const samples = this.ratioSamples
+
+    if (samples.length < RATIO_MIN_SAMPLES) {
+      return null
     }
-    const mx = sx / s.length
-    const my = sy / s.length
-    let num = 0
-    let den = 0
-    for (const p of s) {
-      num += (p.x - mx) * (p.y - my)
-      den += (p.x - mx) * (p.x - mx)
+
+    const span = samples[samples.length - 1].contextSec - samples[0].contextSec
+
+    if (span < RATIO_MIN_SPAN_SEC) {
+      return null
     }
-    if (den <= 0) return null
-    const slope = num / den
-    if (!isFinite(slope)) return null
+
+    let sumX = 0
+    let sumY = 0
+
+    for (const sample of samples) {
+      sumX += sample.contextSec
+      sumY += sample.targetSec
+    }
+
+    const meanX = sumX / samples.length
+    const meanY = sumY / samples.length
+    let numerator = 0
+    let denominator = 0
+
+    for (const sample of samples) {
+      numerator += (sample.contextSec - meanX) * (sample.targetSec - meanY)
+      denominator += (sample.contextSec - meanX) ** 2
+    }
+
+    if (denominator <= 0) {
+      return null
+    }
+
+    const slope = numerator / denominator
+
+    if (!isFinite(slope)) {
+      return null
+    }
+
     return Math.min(1 + RATIO_MAX_DEV, Math.max(1 - RATIO_MAX_DEV, slope))
   }
 
   private sampleOutputLatency(): void {
     const ctx = this.ctx
-    if (!ctx) return
-    // Non-iOS only samples while on the DIRECT path. getOutputTimestamp can't see the <audio>
-    // element's own buffering, so readings taken while on the sink describe the direct path
-    // anyway — folding them in would just add noise to the base we add the sink offset to.
-    if (!IS_IOS && this.usingSink) return
-    // Post-wake: keep the pre-sleep estimate rather than tracking unreliable readings (see
-    // LATENCY_SETTLE_SEC). A moving `aim` is indistinguishable from real drift to the corrector.
-    if (ctx.currentTime < this.latencyHoldUntilCtx) return
-    let L: number | null = null
-    const g = ctx.getOutputTimestamp?.()
-    if (g && typeof g.contextTime === 'number' && g.contextTime > 0) {
-      const d = ctx.currentTime - g.contextTime
-      if (d > 0.001 && d < 1) L = d
+
+    if (!ctx) {
+      return
     }
-    if (L == null && typeof ctx.outputLatency === 'number' && ctx.outputLatency > 0) {
-      L = ctx.outputLatency + (ctx.baseLatency ?? 0)
+
+    // Non-iOS only samples while on the DIRECT path. getOutputTimestamp can't
+    // see the <audio> element's own buffering, so readings taken while on the
+    // sink describe the direct path anyway — folding them in would just add
+    // noise to the base we add the sink offset to.
+    if (!IS_IOS && this.usingSink) {
+      return
     }
-    if (L == null && this.measuredLatencySec < 0.02) L = FALLBACK_LATENCY_SEC
-    if (L == null) return
-    L = Math.min(MAX_LATENCY_SEC, Math.max(0, L))
+
+    // Post-wake: keep the pre-sleep estimate rather than tracking unreliable
+    // readings (see LATENCY_SETTLE_SEC). A moving `aim` is indistinguishable
+    // from real drift to the corrector.
+    if (ctx.currentTime < this.latencyHoldUntilCtx) {
+      return
+    }
+
+    let latencySec: number | null = null
+    const timestamp = ctx.getOutputTimestamp?.()
+
+    if (
+      timestamp &&
+      typeof timestamp.contextTime === 'number' &&
+      timestamp.contextTime > 0
+    ) {
+      const delta = ctx.currentTime - timestamp.contextTime
+
+      if (delta > 0.001 && delta < 1) {
+        latencySec = delta
+      }
+    }
+
+    if (
+      latencySec == null &&
+      typeof ctx.outputLatency === 'number' &&
+      ctx.outputLatency > 0
+    ) {
+      latencySec = ctx.outputLatency + (ctx.baseLatency ?? 0)
+    }
+
+    if (latencySec == null && this.measuredLatencySec < 0.02) {
+      latencySec = FALLBACK_LATENCY_SEC
+    }
+
+    if (latencySec == null) {
+      return
+    }
+
+    latencySec = Math.min(MAX_LATENCY_SEC, Math.max(0, latencySec))
     this.measuredLatencySec = this.measuredLatencySec
-      ? this.measuredLatencySec * (1 - LATENCY_EMA_ALPHA) + L * LATENCY_EMA_ALPHA
-      : L
+      ? this.measuredLatencySec * (1 - LATENCY_EMA_ALPHA) +
+        latencySec * LATENCY_EMA_ALPHA
+      : latencySec
   }
 
   /**
-   * Output latency for the path that is live RIGHT NOW. This must step the instant we re-route,
-   * because the physical delay does: the sink adds the <audio> element's buffering on top of the
-   * direct path. Feeding the corrector a slow EMA across a switch made `aim` crawl while the
-   * position skip jumped, so drift built up, got nudged hard, overshot, and only then settled —
-   * the "too slow, then too fast, then correct" handover. iOS is always on the sink and measures
-   * it directly, so it keeps the single measured value unchanged.
+   * Output latency for the path that is live RIGHT NOW. This must step the
+   * instant we re-route, because the physical delay does: the sink adds the
+   * <audio> element's buffering on top of the direct path. Feeding the
+   * corrector a slow EMA across a switch made `aim` crawl while the position
+   * skip jumped, so drift built up, got nudged hard, overshot, and only then
+   * settled — the "too slow, then too fast, then correct" handover. iOS is
+   * always on the sink and measures it directly, so it keeps the single
+   * measured value unchanged.
    */
   private get activeLatencySec(): number {
-    if (IS_IOS) return this.measuredLatencySec
-    return this.usingSink ? this.measuredLatencySec + SINK_SWITCH_LATENCY_SEC : this.measuredLatencySec
+    if (IS_IOS) {
+      return this.measuredLatencySec
+    }
+
+    return this.usingSink
+      ? this.measuredLatencySec + SINK_SWITCH_LATENCY_SEC
+      : this.measuredLatencySec
   }
 
+  /** Auto-measured output latency being compensated for, in ms. */
   get autoLatencyMs(): number {
     return this.activeLatencySec * 1000
   }
 
+  /** Current playback position within the soundtrack, in seconds. */
   get currentTimeSec(): number {
-    if (!this.ctx || !this.src || this.totalSec <= 0) return 0
-    const pos = this.positionSec(this.ctx.currentTime)
-    return ((pos % this.totalSec) + this.totalSec) % this.totalSec
+    if (!this.ctx || !this.source || this.totalSec <= 0) {
+      return 0
+    }
+
+    const position = this.positionSec(this.ctx.currentTime)
+
+    return ((position % this.totalSec) + this.totalSec) % this.totalSec
   }
 
+  /** Soundtrack length in seconds, or `NaN` before the moov is parsed. */
   get duration(): number {
     return this.totalSec || NaN
   }
 
+  /**
+   * Steer playback one tick toward the screen's position: slide windows,
+   * reposition on large drift, otherwise nudge `playbackRate`.
+   *
+   * @param targetSec the screen's position, or `null` when it is unknown
+   * @param playing whether the screen's video is playing
+   */
   correct(targetSec: number | null, playing: boolean): CorrectionInfo {
     if (this.hardStopped) {
       this.stopChain()
       this.stopSource()
+
       return { mode: 'idle', driftMs: 0, rate: 1 }
     }
+
     if (this.backgrounded) {
-      // Free-running on the pre-scheduled chain — don't touch sources (a throttled tick that
-      // reached us must not restart/stop them). Just report position vs target for the readout.
+      // Free-running on the pre-scheduled chain — don't touch sources (a
+      // throttled tick that reached us must not restart/stop them). Just
+      // report position vs target for the readout.
       this.resume()
-      if (!this.ctx || !this.src || targetSec == null || this.totalSec <= 0) {
+
+      if (
+        !this.ctx ||
+        !this.source ||
+        targetSec == null ||
+        this.totalSec <= 0
+      ) {
         return { mode: 'locked', driftMs: 0, rate: 1 }
       }
+
       const total = this.totalSec
-      const pos = ((this.positionSec(this.ctx.currentTime) % total) + total) % total
-      const aim = (((targetSec + this.activeLatencySec) % total) + total) % total
-      return { mode: 'locked', driftMs: signedDrift(pos, aim, total) * 1000, rate: this.freeRunRate }
+      const position =
+        ((this.positionSec(this.ctx.currentTime) % total) + total) % total
+      const aim =
+        (((targetSec + this.activeLatencySec) % total) + total) % total
+
+      return {
+        mode: 'locked',
+        driftMs: signedDrift(position, aim, total) * 1000,
+        rate: this.freeRunRate,
+      }
     }
+
     if (!this.ctx || !this.table || this.totalSec <= 0) {
-      if (this.desiredUrl) this.setSource(this.desiredUrl)
+      if (this.desiredUrl) {
+        this.setSource(this.desiredUrl)
+      }
+
       return { mode: 'idle', driftMs: 0, rate: 1 }
     }
+
     if (targetSec == null || !playing) {
-      // No target (typically: WebRTC still reconnecting after the sleep). If chain audio is still
-      // sounding, keep free-running on it rather than cutting to silence.
+      // No target (typically: WebRTC still reconnecting after the sleep). If
+      // chain audio is still sounding, keep free-running on it rather than
+      // cutting to silence.
       if (this.chainPlaying()) {
         this.resume()
+
         return { mode: 'locked', driftMs: 0, rate: this.freeRunRate }
       }
+
       this.stopChain()
       this.stopSource()
+
       return { mode: 'idle', driftMs: 0, rate: 1 }
     }
 
     this.resume()
     this.sampleOutputLatency()
+
     const total = this.totalSec
     const ctxNow = this.ctx.currentTime
     const aim = (((targetSec + this.activeLatencySec) % total) + total) % total
-    this.recordClockRatioSample(targetSec, ctxNow) // keep the clock-ratio estimate fresh
+
+    // Keep the clock-ratio estimate fresh.
+    this.recordClockRatioSample(targetSec, ctxNow)
+
     const ratio = this.estimateClockRatio()
-    if (ratio != null) this.holdRate = ratio
 
-    // Install a freshly decoded window if one arrived, then make sure a decode is in flight
-    // if nothing covers the aim yet.
-    this.ensureDecode(aim)
-
-    // Pick the window to play. Keep the CURRENT source's window until its audio truly runs out
-    // (margin ~0) — abandoning it early just to switch windows is what caused mid-playback
-    // `syncing` gaps. Only a fresh START needs the EDGE margin (don't begin right at the end).
-    let w: DecodedWindow | null = null
-    let slide = false
-    if (this.src && this.srcWindow && this.covers(this.srcWindow, aim, 0.05)) {
-      w = this.srcWindow
-    } else if (this.curWindow && this.covers(this.curWindow, aim, WINDOW_EDGE_SEC)) {
-      w = this.curWindow
-      slide = this.src != null && this.srcWindow != null // seamless slide from a playing source
+    if (ratio != null) {
+      this.holdRate = ratio
     }
 
-    if (!w) {
-      // No decoded audio at the target yet (cold start, big seek, loop wrap, or decode behind).
-      // While free-run chain audio is still sounding, keep it rather than cutting to silence.
-      if (this.chainPlaying()) return { mode: 'locked', driftMs: 0, rate: this.freeRunRate }
+    // Install a freshly decoded window if one arrived, then make sure a decode
+    // is in flight if nothing covers the aim yet.
+    this.ensureDecode(aim)
+
+    // Pick the window to play. Keep the CURRENT source's window until its
+    // audio truly runs out (margin ~0) — abandoning it early just to switch
+    // windows is what caused mid-playback `syncing` gaps. Only a fresh START
+    // needs the EDGE margin (don't begin right at the end).
+    let playWindow: DecodedWindow | null = null
+    let slide = false
+
+    if (
+      this.source &&
+      this.sourceWindow &&
+      this.covers(this.sourceWindow, aim, 0.05)
+    ) {
+      playWindow = this.sourceWindow
+    } else if (
+      this.latestWindow &&
+      this.covers(this.latestWindow, aim, WINDOW_EDGE_SEC)
+    ) {
+      playWindow = this.latestWindow
+      // Seamless slide from a playing source.
+      slide = this.source != null && this.sourceWindow != null
+    }
+
+    if (!playWindow) {
+      // No decoded audio at the target yet (cold start, big seek, loop wrap,
+      // or decode behind). While free-run chain audio is still sounding, keep
+      // it rather than cutting to silence.
+      if (this.chainPlaying()) {
+        return { mode: 'locked', driftMs: 0, rate: this.freeRunRate }
+      }
+
       this.stopChain()
       this.stopSource()
+
       return { mode: 'syncing', driftMs: 0, rate: 1 }
     }
 
-    // Handing back from the free-run chain (post-wake, target just returned): start a properly
-    // synced source and cut the chain at the same instant, so the transition is de-clicked and
-    // there's no silence and no two-sources-at-once overlap.
-    if (this.chained.length > 0) {
+    // Handing back from the free-run chain (post-wake, target just returned):
+    // start a properly synced source and cut the chain at the same instant, so
+    // the transition is de-clicked and there's no silence and no
+    // two-sources-at-once overlap.
+    if (this.chainedSources.length > 0) {
       const when = ctxNow + SCHEDULE_AHEAD_SEC
-      this.startAt(aim, w, ctxNow, false)
+      this.startAt(aim, playWindow, ctxNow, false)
       this.stopChain(when + DECLICK_SEC)
-      // Resume at the last known-good clock ratio rather than a blind 1.0. The estimator's window
-      // was reset by the sleep gap, so it reports 1.0 for the next ~20 s — starting at 1.0 would
-      // re-introduce the very drift the corrector then has to chase out (slow, nudge, overshoot).
+      // Resume at the last known-good clock ratio rather than a blind 1.0. The
+      // estimator's window was reset by the sleep gap, so it reports 1.0 for
+      // the next ~20 s — starting at 1.0 would re-introduce the very drift the
+      // corrector then has to chase out (slow, nudge, overshoot).
       this.forceRate(this.freeRunRate, ctxNow)
+
       return { mode: 'seek', driftMs: 0, rate: this.freeRunRate }
     }
 
-    if (!this.src) {
+    if (!this.source) {
       this.mute() // cold start: converge silently, fade in on first lock
-      this.startAt(aim, w, ctxNow, false)
+      this.startAt(aim, playWindow, ctxNow, false)
+
       return { mode: 'seek', driftMs: 0, rate: 1 }
     }
-    if (this.srcWindow !== w) {
-      // Slide into the next window — carry rate/drift and fall through to normal correction so
-      // the nudge corrector isn't reset every ~45 s.
-      this.startAt(aim, w, ctxNow, slide)
+
+    if (this.sourceWindow !== playWindow) {
+      // Slide into the next window — carry rate/drift and fall through to
+      // normal correction so the nudge corrector isn't reset every ~45 s.
+      this.startAt(aim, playWindow, ctxNow, slide)
     }
 
-    const pos = this.positionSec(ctxNow)
-    const posWrapped = ((pos % total) + total) % total
-    const rawDrift = signedDrift(posWrapped, aim, total)
-    this.smoothedDriftSec = DRIFT_EMA_ALPHA * rawDrift + (1 - DRIFT_EMA_ALPHA) * this.smoothedDriftSec
+    const position = this.positionSec(ctxNow)
+    const positionWrapped = ((position % total) + total) % total
+    const rawDrift = signedDrift(positionWrapped, aim, total)
+    this.smoothedDriftSec =
+      DRIFT_EMA_ALPHA * rawDrift +
+      (1 - DRIFT_EMA_ALPHA) * this.smoothedDriftSec
     const drift = this.smoothedDriftSec
     const now = Date.now()
+    const windowEnd = playWindow.startSec + playWindow.buffer.duration
 
-    // Slide ahead: prefetch the next window once the playhead nears this window's end.
-    if (pos > w.startSec + w.buffer.duration - PREFETCH_MARGIN_SEC) {
-      this.prefetchAt(w.startSec + WINDOW_STEP_SEC)
+    // Slide ahead: prefetch the next window once the playhead nears this
+    // window's end.
+    if (position > windowEnd - PREFETCH_MARGIN_SEC) {
+      this.prefetchAt(playWindow.startSec + WINDOW_STEP_SEC)
     }
 
     if (
       Math.abs(rawDrift) > HARD_RESTART_SEC &&
       now - this.lastRestartAt >= RESTART_COOLDOWN_MS &&
-      this.covers(w, aim, WINDOW_EDGE_SEC)
+      this.covers(playWindow, aim, WINDOW_EDGE_SEC)
     ) {
-      this.startAt(aim, w, ctxNow)
+      this.startAt(aim, playWindow, ctxNow)
+
       return { mode: 'seek', driftMs: rawDrift * 1000, rate: 1 }
     }
 
+    const mode: CorrectionMode =
+      Math.abs(rawDrift) < LOCKED_SEC ? 'locked' : 'nudge'
+
     if (Math.abs(drift) < LOCK_DEADBAND_SEC) {
       this.unmute()
-      // Hold the measured clock ratio, not 1.0. Snapping to 1.0 inside the deadband guaranteed
-      // drift re-accumulated at the clocks' ppm difference until it escaped the band and got
-      // nudged — a slow sawtooth that reads as "settles, drifts, gets bumped, settles".
+      // Hold the measured clock ratio, not 1.0. Snapping to 1.0 inside the
+      // deadband guaranteed drift re-accumulated at the clocks' ppm difference
+      // until it escaped the band and got nudged — a slow sawtooth that reads
+      // as "settles, drifts, gets bumped, settles".
       this.setRate(this.holdRate, ctxNow)
-      return {
-        mode: (Math.abs(rawDrift) < LOCKED_SEC ? 'locked' : 'nudge') as CorrectionMode,
-        driftMs: rawDrift * 1000,
-        rate: this.rate,
-      }
+
+      return { mode, driftMs: rawDrift * 1000, rate: this.rate }
     }
 
     const rate = correctionRate(drift, RATE_GAIN, RATE_MIN, RATE_MAX)
     this.setRate(rate, ctxNow)
-    return {
-      mode: (Math.abs(rawDrift) < LOCKED_SEC ? 'locked' : 'nudge') as CorrectionMode,
-      driftMs: rawDrift * 1000,
-      rate: this.rate,
-    }
+
+    return { mode, driftMs: rawDrift * 1000, rate: this.rate }
   }
 
   /**
-   * Schedule a contiguous chain of upcoming windows (rate 1) directly on the audio thread so
-   * playback keeps going while the correction timer is throttled (screen locked). Decoding
-   * races the browser suspending us, so whatever windows land extend the runway; the current
-   * window alone already buys up to WINDOW_SEC.
+   * Schedule a contiguous chain of upcoming windows directly on the audio
+   * thread so playback keeps going while the correction timer is throttled
+   * (screen locked). Decoding races the browser suspending us, so whatever
+   * windows land extend the runway; the current window alone already buys up
+   * to WINDOW_SEC.
    */
   enterBackground(lookaheadSec = BACKGROUND_RUNWAY_SEC): void {
-    if (this.backgrounded || !this.ctx || !this.src || !this.srcWindow) return
-    const ctxNow = this.ctx.currentTime
-    // Where playback actually is now. After a previous free-run the chain will have moved PAST
-    // srcWindow, so pick a window that genuinely covers this position — reusing a stale srcWindow
-    // would clamp to its end and jump the audio.
-    const pos = this.positionSec(ctxNow)
-    const from = IS_IOS || this.usingSink ? pos : pos + SINK_SWITCH_LATENCY_SEC
-    let w: DecodedWindow | null = null
-    if (this.covers(this.srcWindow, from, 0.05)) w = this.srcWindow
-    else if (this.curWindow && this.covers(this.curWindow, from, 0.05)) w = this.curWindow
-    if (!w) {
-      // Nothing decoded covers the playhead (long free-run). Fetch it and leave everything already
-      // scheduled alone — bailing without tearing anything down is the safe choice here.
-      this.ensureDecode(from)
+    if (this.backgrounded || !this.ctx || !this.source || !this.sourceWindow) {
       return
     }
-    // Drop any chain left over from a previous sleep. It survives on purpose when the wake found no
-    // target (WebRTC still down), but the fresh chain below re-covers the same timeline — keeping
-    // the old one would leave two overlapping chains sounding at once, and every further sleep
-    // would stack another. This is the audio-stacking fix.
+
+    const ctxNow = this.ctx.currentTime
+    // Where playback actually is now. After a previous free-run the chain will
+    // have moved PAST sourceWindow, so pick a window that genuinely covers
+    // this position — reusing a stale sourceWindow would clamp to its end and
+    // jump the audio.
+    const position = this.positionSec(ctxNow)
+    const from =
+      IS_IOS || this.usingSink ? position : position + SINK_SWITCH_LATENCY_SEC
+
+    let fromWindow: DecodedWindow | null = null
+
+    if (this.covers(this.sourceWindow, from, 0.05)) {
+      fromWindow = this.sourceWindow
+    } else if (
+      this.latestWindow &&
+      this.covers(this.latestWindow, from, 0.05)
+    ) {
+      fromWindow = this.latestWindow
+    }
+
+    if (!fromWindow) {
+      // Nothing decoded covers the playhead (long free-run). Fetch it and
+      // leave everything already scheduled alone — bailing without tearing
+      // anything down is the safe choice here.
+      this.ensureDecode(from)
+
+      return
+    }
+
+    // Drop any chain left over from a previous sleep. It survives on purpose
+    // when the wake found no target (WebRTC still down), but the fresh chain
+    // below re-covers the same timeline — keeping the old one would leave two
+    // overlapping chains sounding at once, and every further sleep would stack
+    // another. This is the audio-stacking fix.
     this.stopChain()
-    this.gen++ // invalidate any decode still in flight for the old chain
+    this.generation++ // invalidate any decode still in flight for the old chain
     this.backgrounded = true
-    // Free-run at the MEASURED screen:device clock ratio, not a blind 1.0 — and force it exactly
-    // (setRate's deadband would otherwise leave up to 0.2% of residual nudge rate in place).
+    // Free-run at the MEASURED screen:device clock ratio, not a blind 1.0 —
+    // and force it exactly (setRate's deadband would otherwise leave up to
+    // 0.2% of residual nudge rate in place).
     this.freeRunRate = this.holdRate
     this.forceRate(this.freeRunRate, ctxNow)
-    // Android/desktop play through the speakers in the foreground; route to the keep-alive sink
-    // now so audio survives the lock (iOS is always on the sink already), and skip content
-    // forward by the sink's added latency so the (delayed) sink output stays aligned to the
-    // still-playing screen instead of stepping behind it.
+
+    // Android/desktop play through the speakers in the foreground; route to
+    // the keep-alive sink now so audio survives the lock (iOS is always on the
+    // sink already), and skip content forward by the sink's added latency so
+    // the (delayed) sink output stays aligned to the still-playing screen
+    // instead of stepping behind it.
     if (!IS_IOS && !this.usingSink) {
       this.connectOutput(true)
-      this.startAt(from, w, ctxNow, true)
+      this.startAt(from, fromWindow, ctxNow, true)
     }
-    void this.buildChain(w.startSec + w.buffer.duration, ctxNow + lookaheadSec)
+
+    this.buildChain(
+      fromWindow.startSec + fromWindow.buffer.duration,
+      ctxNow + lookaheadSec,
+    )
   }
 
-  private async buildChain(fromTrackSec: number, untilCtxTime: number): Promise<void> {
-    if (this.chainBuilding) return
+  private async buildChain(
+    fromTrackSec: number,
+    untilCtxTime: number,
+  ): Promise<void> {
+    if (this.chainBuilding) {
+      return
+    }
+
     this.chainBuilding = true
+
     try {
       await this.buildChainInner(fromTrackSec, untilCtxTime)
     } finally {
@@ -982,132 +1531,221 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   /**
-   * Top up the runway when a chained source finishes. `onended` is delivered from the audio thread
-   * rather than a timer, so it can still arrive on a throttled page — best-effort, but when it does
-   * fire the chain extends itself and sleep playback continues past the initial runway.
+   * Top up the runway when a chained source finishes. `onended` is delivered
+   * from the audio thread rather than a timer, so it can still arrive on a
+   * throttled page — best-effort, but when it does fire the chain extends
+   * itself and sleep playback continues past the initial runway.
    */
   private extendChain(): void {
-    if (!this.backgrounded || !this.ctx || this.chainBuilding) return
-    void this.buildChain(this.chainTrackEnd, this.ctx.currentTime + BACKGROUND_RUNWAY_SEC)
+    if (!this.backgrounded || !this.ctx || this.chainBuilding) {
+      return
+    }
+
+    this.buildChain(
+      this.chainTrackEnd,
+      this.ctx.currentTime + BACKGROUND_RUNWAY_SEC,
+    )
   }
 
-  private async buildChainInner(fromTrackSec: number, untilCtxTime: number): Promise<void> {
-    const gen = this.gen
+  private async buildChainInner(
+    fromTrackSec: number,
+    untilCtxTime: number,
+  ): Promise<void> {
+    const generation = this.generation
     const rate = this.freeRunRate
     let trackCursor = fromTrackSec
-    // Context time the playing source reaches `fromTrackSec` — content advances at `rate` per
-    // context second, so the elapsed CONTEXT time is the content delta divided by the rate.
-    let ctxCursor = this.startCtxTime + (fromTrackSec - this.startOffset) / rate
-    if (this.chained.length === 0) this.chainEndsAtCtx = ctxCursor
-    if (this.chainTrackEnd < trackCursor) this.chainTrackEnd = trackCursor
-    while (this.backgrounded && this.gen === gen && ctxCursor < untilCtxTime && trackCursor < this.totalSec - 0.05) {
-      const w = await this.decodeWindow(trackCursor)
-      if (!w || !this.backgrounded || this.gen !== gen || !this.ctx || this.desiredUrl !== this.demuxedUrl) break
-      const offset = Math.max(0, trackCursor - w.startSec)
-      const playSec = w.buffer.duration - offset
-      if (playSec <= 0) break
-      const src = this.ctx.createBufferSource()
-      src.buffer = w.buffer
-      src.playbackRate.value = rate // must match the primary, or every seam misaligns
-      src.connect(this.masterGain ?? this.outputNode())
-      src.start(ctxCursor, offset)
-      src.onended = () => {
+    // Context time the playing source reaches `fromTrackSec` — content
+    // advances at `rate` per context second, so the elapsed CONTEXT time is
+    // the content delta divided by the rate.
+    let ctxCursor =
+      this.startCtxTime + (fromTrackSec - this.startOffset) / rate
+
+    if (this.chainedSources.length === 0) {
+      this.chainEndsAtCtx = ctxCursor
+    }
+
+    if (this.chainTrackEnd < trackCursor) {
+      this.chainTrackEnd = trackCursor
+    }
+
+    while (
+      this.backgrounded &&
+      this.generation === generation &&
+      ctxCursor < untilCtxTime &&
+      trackCursor < this.totalSec - 0.05
+    ) {
+      const decoded = await this.decodeWindow(trackCursor)
+
+      if (
+        !decoded ||
+        !this.backgrounded ||
+        this.generation !== generation ||
+        !this.ctx ||
+        this.desiredUrl !== this.demuxedUrl
+      ) {
+        break
+      }
+
+      const offset = Math.max(0, trackCursor - decoded.startSec)
+      const playSec = decoded.buffer.duration - offset
+
+      if (playSec <= 0) {
+        break
+      }
+
+      const source = this.ctx.createBufferSource()
+      source.buffer = decoded.buffer
+      source.playbackRate.value = rate // must match the primary, or every seam misaligns
+      source.connect(this.masterGain ?? this.outputNode())
+      source.start(ctxCursor, offset)
+
+      source.onended = () => {
         try {
-          src.disconnect()
+          source.disconnect()
         } catch {
           /* ignore */
         }
-        const i = this.chained.indexOf(src)
-        if (i >= 0) this.chained.splice(i, 1)
+
+        const index = this.chainedSources.indexOf(source)
+
+        if (index >= 0) {
+          this.chainedSources.splice(index, 1)
+        }
+
         this.extendChain() // keep the runway ahead of the playhead while still asleep
       }
-      this.chained.push(src)
+
+      this.chainedSources.push(source)
       trackCursor += playSec
       ctxCursor += playSec / rate
       this.chainEndsAtCtx = ctxCursor
-      // Must advance with the loop: extendChain() resumes from here, and leaving it at the initial
-      // value made a top-up re-schedule the SAME windows on top of the existing ones.
+      // Must advance with the loop: extendChain() resumes from here, and
+      // leaving it at the initial value made a top-up re-schedule the SAME
+      // windows on top of the existing ones.
       this.chainTrackEnd = trackCursor
     }
   }
 
   /**
-   * Leaving the background. Deliberately does NOT tear the chain down: the WebRTC link is usually
-   * dropped by the sleep and takes seconds to re-establish, so killing the chain here would cut
-   * audio to silence while we wait for a target. Instead the chain keeps free-running and the
-   * next correct() with a live target hands over to a synced source (then stops the chain).
+   * Leaving the background. Deliberately does NOT tear the chain down: the
+   * WebRTC link is usually dropped by the sleep and takes seconds to
+   * re-establish, so killing the chain here would cut audio to silence while
+   * we wait for a target. Instead the chain keeps free-running and the next
+   * correct() with a live target hands over to a synced source (then stops the
+   * chain).
    */
   exitBackground(): void {
-    if (!this.backgrounded) return
+    if (!this.backgrounded) {
+      return
+    }
+
     this.backgrounded = false
-    this.gen++ // invalidate any in-flight chain decode so it can't schedule after we reset
-    // Hold the latency estimate: readings are unreliable for a few seconds after a wake, and a
-    // moving `aim` reads as drift to the corrector (the rough handover). See LATENCY_SETTLE_SEC.
-    if (this.ctx) this.latencyHoldUntilCtx = this.ctx.currentTime + LATENCY_SETTLE_SEC
-    // Back to the speakers for clean foreground output (iOS stays on the sink). The chain and the
-    // primary source follow the master gain, so they move with it.
-    if (!IS_IOS && this.usingSink) this.connectOutput(false)
+    this.generation++ // invalidate in-flight chain decodes so they can't schedule after the reset
+
+    // Hold the latency estimate: readings are unreliable for a few seconds
+    // after a wake, and a moving `aim` reads as drift to the corrector (the
+    // rough handover). See LATENCY_SETTLE_SEC.
+    if (this.ctx) {
+      this.latencyHoldUntilCtx = this.ctx.currentTime + LATENCY_SETTLE_SEC
+    }
+
+    // Back to the speakers for clean foreground output (iOS stays on the
+    // sink). The chain and the primary source follow the master gain, so they
+    // move with it.
+    if (!IS_IOS && this.usingSink) {
+      this.connectOutput(false)
+    }
   }
 
   /**
-   * Stop the free-run chain (at `when` if given, so a handover can be de-clicked). Deliberately
-   * does NOT bump `gen`: this runs on the hot no-window path every tick, and decodeWindow aborts
-   * when `gen` moves — bumping here would cancel the very decode we're waiting for. Callers that
-   * genuinely invalidate in-flight work (enter/exitBackground, resync, stop) bump `gen` themselves.
+   * Stop the free-run chain (at `when` if given, so a handover can be
+   * de-clicked). Deliberately does NOT bump `generation`: this runs on the hot
+   * no-window path every tick, and decodeWindow aborts when `generation` moves
+   * — bumping here would cancel the very decode we're waiting for. Callers
+   * that genuinely invalidate in-flight work (enter/exitBackground, resync,
+   * stop) bump `generation` themselves.
    */
   private stopChain(when?: number): void {
-    if (this.chained.length === 0) {
+    if (this.chainedSources.length === 0) {
       this.chainEndsAtCtx = 0
       this.chainTrackEnd = 0
+
       return
     }
-    const doomed = this.chained
-    this.chained = [] // clear first so the sources' onended can't re-extend a chain we're killing
-    for (const s of doomed) {
-      s.onended = null
+
+    const doomed = this.chainedSources
+    // Clear first so the sources' onended can't re-extend a chain we're
+    // killing.
+    this.chainedSources = []
+
+    for (const source of doomed) {
+      source.onended = null
+
       try {
-        if (when != null) s.stop(when)
-        else s.stop()
+        if (when != null) {
+          source.stop(when)
+        } else {
+          source.stop()
+        }
       } catch {
         /* already stopped */
       }
+
       try {
-        if (when == null) s.disconnect()
+        if (when == null) {
+          source.disconnect()
+        }
       } catch {
         /* ignore */
       }
     }
+
     this.chainEndsAtCtx = 0
     this.chainTrackEnd = 0
   }
 
   /** Is pre-scheduled chain audio still sounding right now? */
   private chainPlaying(): boolean {
-    return this.chained.length > 0 && this.ctx != null && this.ctx.currentTime < this.chainEndsAtCtx
+    return (
+      this.chainedSources.length > 0 &&
+      this.ctx != null &&
+      this.ctx.currentTime < this.chainEndsAtCtx
+    )
   }
 
+  /** Drop the current segment so the next tick re-converges from scratch. */
   resync(): void {
-    if (this.backgrounded) return // don't disturb the free-run chain while locked
-    this.gen++
+    if (this.backgrounded) {
+      return // don't disturb the free-run chain while locked
+    }
+
+    this.generation++
     this.smoothedDriftSec = 0
     this.lastRestartAt = 0
-    // If chain audio is still sounding (post-wake, WebRTC not back yet), leave it playing —
-    // correct() hands over once there's a live target. Otherwise cold-start as usual.
-    if (!this.chainPlaying()) this.stopSource()
+
+    // If chain audio is still sounding (post-wake, WebRTC not back yet), leave
+    // it playing — correct() hands over once there's a live target. Otherwise
+    // cold-start as usual.
+    if (!this.chainPlaying()) {
+      this.stopSource()
+    }
   }
 
+  /** Stop playback for good and tear down the keep-alive sink. */
   stop(): void {
     this.hardStopped = true
-    this.gen++
-    this.exitBackground() // leaves the chain playing by design — kill it explicitly below
+    this.generation++
+    this.exitBackground() // leaves the chain playing by design — killed explicitly below
     this.stopChain()
     this.stopSource()
-    this.curWindow = null
-    if (this.sinkEl) {
-      this.sinkEl.pause()
-      this.sinkEl.srcObject = null
-      this.sinkEl = null
+    this.latestWindow = null
+
+    if (this.sinkElement) {
+      this.sinkElement.pause()
+      this.sinkElement.srcObject = null
+      this.sinkElement = null
     }
+
     this.streamDest = null
   }
 }

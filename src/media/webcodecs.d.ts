@@ -13,7 +13,15 @@ interface AudioDataCopyToOptions {
   planeIndex: number
   frameOffset?: number
   frameCount?: number
-  format?: 'f32' | 'f32-planar' | 's16' | 's16-planar' | 'u8' | 'u8-planar' | 's32' | 's32-planar'
+  format?:
+    | 'f32'
+    | 'f32-planar'
+    | 's16'
+    | 's16-planar'
+    | 'u8'
+    | 'u8-planar'
+    | 's32'
+    | 's32-planar'
 }
 
 declare class AudioData {
@@ -54,5 +62,7 @@ declare class AudioDecoder {
   flush(): Promise<void>
   reset(): void
   close(): void
-  static isConfigSupported(config: AudioDecoderConfig): Promise<{ supported: boolean }>
+  static isConfigSupported(
+    config: AudioDecoderConfig,
+  ): Promise<{ supported: boolean }>
 }

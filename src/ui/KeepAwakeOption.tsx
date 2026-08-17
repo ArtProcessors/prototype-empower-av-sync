@@ -1,13 +1,20 @@
 import type { SyncApi } from '../hooks/useSync'
 
+/**
+ * Opt-in checkbox for the Screen Wake Lock. Renders nothing on browsers
+ * without the API.
+ */
 export function KeepAwakeOption({ api }: { api: SyncApi }) {
-  if (!api.wakeLockSupported) return null
+  if (!api.wakeLockSupported) {
+    return null
+  }
+
   return (
     <label className="check">
       <input
         type="checkbox"
         checked={api.keepAwake}
-        onChange={(e) => api.setKeepAwake(e.target.checked)}
+        onChange={event => api.setKeepAwake(event.target.checked)}
       />
       <span>
         Keep screen awake

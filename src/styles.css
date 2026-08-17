@@ -1,7 +1,10 @@
 /* Skeletal styling — tech spike. */
 :root {
   color-scheme: dark;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 * {
   box-sizing: border-box;

@@ -20,12 +20,12 @@ yarn install
 yarn dev          # → http://localhost:3100
 ```
 
-| Command | What it does |
-|---|---|
-| `yarn dev` | Dev server on :3100 (no service worker) |
-| `yarn build` | Type-check + production build (builds the SW) |
+| Command        | What it does                                                    |
+| -------------- | --------------------------------------------------------------- |
+| `yarn dev`     | Dev server on :3100 (no service worker)                         |
+| `yarn build`   | Type-check + production build (builds the SW)                   |
 | `yarn preview` | Serve the prod build on :4273 (SW active — for offline testing) |
-| `yarn sim` | Unit checks for the sync math (`test/sync-sim.ts`) |
+| `yarn sim`     | Unit checks for the sync math (`test/sync-sim.ts`)              |
 
 ## Try it
 
@@ -96,11 +96,11 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
 The leader picks the video from a dropdown; the choice is broadcast in each beat (`mediaId`)
 so followers load the matching audio. Three options ship (`src/content/index.ts`):
 
-| id | Video (screen) | Audio (followers) | Delivery |
-|---|---|---|---|
-| `test` | synthetic clip, flash+click cues (20s) | `soundtrack.m4a` | committed, **precached** (fully offline) |
-| `soh` | `soh.mp4` (~127 MB H.264) | `soh.m4a` (~14 MB) | remote (`content.dev.pladia.live`), **`streaming: true`** |
-| `sync45` | `sync-test-45mins.mp4` (~860 MB) | `sync-test-45mins.m4a` (~43 MB) | remote, **`streaming: true`** |
+| id       | Video (screen)                         | Audio (followers)               | Delivery                                                  |
+| -------- | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| `test`   | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline)                  |
+| `soh`    | `soh.mp4` (~127 MB H.264)              | `soh.m4a` (~14 MB)              | remote (`content.dev.pladia.live`), **`streaming: true`** |
+| `sync45` | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, **`streaming: true`**                             |
 
 **Followers only ever download the audio** — the screen fetches the video, each follower only
 the soundtrack (e.g. ~14 MB vs ~127 MB for `soh`). With `streaming: true` the follower doesn't
@@ -121,6 +121,7 @@ ffmpeg -i source.mov -vn -c:a copy -movflags +faststart mine.m4a
 # video the screen plays — transcode to H.264 if the source is HEVC/H.265 (Chrome can't decode HEVC):
 ffmpeg -i source.mov -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -c:a copy -movflags +faststart mine.mp4
 ```
+
 (If the source is already H.264/AAC, remux instead: `ffmpeg -i source.mp4 -c copy -movflags +faststart mine.mp4`.)
 Keep the audio a stream-copy of the video's own track so their timelines match exactly, and
 keep `+faststart` on the audio — the streaming engine needs the `moov` in the first 24 MB.
@@ -150,13 +151,13 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   3. On hide, the streaming engine also pre-schedules a **chain of buffer sources directly on
      the audio thread** (~180 s runway, topped up from each source's `onended`), so playback
      free-runs without needing a timer.
-  The chain runs at the **measured screen:device clock ratio** — a least-squares fit of target
-  seconds against context seconds, clamped to ±0.5 % — rather than a blind 1.0, so a locked
-  phone drifts far less than the crystals' ppm difference would imply. On wake the chain is
-  deliberately left playing (WebRTC takes seconds to return) until a live target arrives, at
-  which point a properly synced source starts and the chain is cut at the same de-clicked
-  instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway),
-  `?sinklat=<sec>` (the sink's assumed added latency, default 0.15) and `?kagain=<gain>`.
+     The chain runs at the **measured screen:device clock ratio** — a least-squares fit of target
+     seconds against context seconds, clamped to ±0.5 % — rather than a blind 1.0, so a locked
+     phone drifts far less than the crystals' ppm difference would imply. On wake the chain is
+     deliberately left playing (WebRTC takes seconds to return) until a live target arrives, at
+     which point a properly synced source starts and the chain is cut at the same de-clicked
+     instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway),
+     `?sinklat=<sec>` (the sink's assumed added latency, default 0.15) and `?kagain=<gain>`.
 - **Reconnect after sleep:** Android Doze throttles the network a few minutes into a screen-off
   and WebRTC drops the peer connection when consent-freshness checks fail — the listener
   vanishes from the screen's count while its audio keeps free-running. A watchdog in
@@ -167,13 +168,13 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   away if the link is stale. If the tab is discarded outright, the room code is kept in
   `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
   real gesture, so that part can't be automatic).
-- **Automatic output-latency compensation (BYOD — no manual calibration):** what you *hear*
+- **Automatic output-latency compensation (BYOD — no manual calibration):** what you _hear_
   trails the element/context clock by the device's output latency (~100–300 ms on iOS;
   Bluetooth adds even more). We measure it at runtime from
   `AudioContext.getOutputTimestamp()` (`currentTime − contextTime` = the true
-  scheduling→output delay, and it reflects the real output path *including Bluetooth*),
+  scheduling→output delay, and it reflects the real output path _including Bluetooth_),
   smoothed, with `outputLatency` as a fallback and a conservative default only if both read 0.
-  Audio is steered ahead by that amount so the *audible* audio lands on the video. The debug
+  Audio is steered ahead by that amount so the _audible_ audio lands on the video. The debug
   `latency comp: auto N ms` shows the live estimate (≈220 ms on the test Chrome). Note:
   `outputLatency` is unreliable (0 on iOS Safari and 0-until-warmup on Chrome), which is why
   `getOutputTimestamp` is the primary signal. The estimate is **held for 4 s after a wake**,

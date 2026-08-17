@@ -29,12 +29,16 @@ registerRoute(
 // Media (audio/video) cache-first with Range support for seeking, in case anything is
 // fetched at runtime rather than served from precache.
 registerRoute(
-  ({ request }) => request.destination === 'audio' || request.destination === 'video',
+  ({ request }) =>
+    request.destination === 'audio' || request.destination === 'video',
   new CacheFirst({
     cacheName: 'media-cache',
     plugins: [
       new RangeRequestsPlugin(),
-      new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+      new ExpirationPlugin({
+        maxEntries: 20,
+        maxAgeSeconds: 7 * 24 * 60 * 60,
+      }),
     ],
   }),
 )

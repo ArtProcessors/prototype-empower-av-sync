@@ -41,7 +41,7 @@ strategies swappable). The wire protocol is two messages:
 
 - **`beat`** (screen → all, 4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
   where the looping video is and the screen's wall-clock at that instant. `mediaId` tells
-  followers which soundtrack to load *and* which engine to use.
+  followers which soundtrack to load _and_ which engine to use.
 - **`clk`** (follower → screen RPC, every 3 s): estimates the screen↔follower clock offset
   via **Cristian's algorithm** (`offset = tScreen − (t0+t2)/2`), keeping the lowest-RTT
   sample from a rolling window of 8. Beat gaps > 4 s bump a `syncEpoch`, forcing a clean
@@ -52,7 +52,7 @@ runs a ~15 Hz loop: extrapolate the screen's current position
 (`target = videoTime + (now + offset − wall)`, wrapped to the loop), compute loop-aware
 `signedDrift`, EMA-smooth it, then steer.
 
-**Three audio engines**, selected per *source* and per platform
+**Three audio engines**, selected per _source_ and per platform
 ([audio-sync-controller.ts](src/media/audio-sync-controller.ts)). Content entries carry a
 `streaming` flag; `engineFor()` resolves it as: streaming source + WebCodecs → streaming
 engine; else iOS → buffer engine; else element engine. The element path is also the universal
@@ -80,7 +80,7 @@ fallback if an engine fails to load.
   with **WebCodecs `AudioDecoder`** into a 60 s PCM buffer (~21 MB). Windows advance in 45 s
   steps (15 s overlap) and the next is prefetched 30 s before the current runs out; the slide
   is a de-clicked reposition into the overlap, so it's seamless and carries the corrector's
-  rate and drift EMA across. Inside a window it *is* the buffer engine — same AudioContext-clock
+  rate and drift EMA across. Inside a window it _is_ the buffer engine — same AudioContext-clock
   scheduling, same correction constants, same mute-switch-bypassing stream sink. Requires
   AAC-LC (`mp4a.40.*`), a faststart MP4, HTTP Range and CORS; anything else falls back via
   `onLoadFailed`.
@@ -88,7 +88,7 @@ fallback if an engine fails to load.
 **Automatic output-latency compensation** — what you hear trails the element/context clock
 by the device's output latency (~100–300 ms on iOS; Bluetooth adds more). This is measured
 live from `AudioContext.getOutputTimestamp()` (with `outputLatency` as fallback and a
-conservative default), EMA-smoothed, and the audio is steered *ahead* by that amount so the
+conservative default), EMA-smoothed, and the audio is steered _ahead_ by that amount so the
 **audible** sound lands on the video. No user calibration — this is what makes BYOD Bluetooth
 headphones workable. Two refinements came out of the sleep work: the estimate is **held for
 4 s after a wake** (post-resume readings are unreliable, and a moving target reads as drift to
@@ -107,11 +107,11 @@ re-routed, rather than being folded into an EMA that could only crawl.
 - **Free-run runs at a measured clock ratio, not a blind 1.0.** A least-squares regression of
   screen-target seconds against this device's audio-context seconds (90 s window, ≥ 20
   samples, ≥ 20 s span, clamped to ±0.5 %) estimates the two crystals' ppm difference; the
-  chain is scheduled at that rate, and the same rate is *held inside the lock deadband*
+  chain is scheduled at that rate, and the same rate is _held inside the lock deadband_
   instead of snapping to 1.0 — which used to guarantee a slow drift-then-nudge sawtooth.
 - **The keep-alive `<audio>` element is now always playing — that's what keeps the page (and
   the WebRTC connection) alive.** Chrome on Android doesn't freeze a page that is actively
-  playing audio. The old whole-file path got this for free because the `<audio>` element *was*
+  playing audio. The old whole-file path got this for free because the `<audio>` element _was_
   the output; routing the streaming engine straight to `ctx.destination` gave clean foreground
   audio but left no playing element, so Android froze the page a few minutes into a sleep and
   the peer connection died with it. The output stage is therefore a permanent split —
@@ -138,7 +138,7 @@ re-routed, rather than being folded into an EMA that could only crawl.
   screen-off and WebRTC drops the peer connection when its consent-freshness checks fail, so the
   follower silently disappears from the screen's listener count and stops receiving beats even
   though its audio is still free-running. If beats have been absent > 6 s the follower leaves
-  and rejoins *without touching the audio engine* — no gesture is needed and the chain keeps
+  and rejoins _without touching the audio engine_ — no gesture is needed and the chain keeps
   playing across the reconnect. Because the keep-alive tap means the page is still running, this
   now retries **while hidden** too, at a 45 s cooldown rather than the 10 s used when visible
   (battery, and Doze will refuse most attempts anyway — but it recovers on Doze's maintenance
@@ -147,7 +147,7 @@ re-routed, rather than being folded into an EMA that could only crawl.
   discarded outright, the room code is kept in `sessionStorage` and the landing page offers a
   one-tap **Rejoin** (audio still needs a gesture, so that part can't be automatic).
 
-**Platform plumbing** — audio is unlocked inside the join tap (autoplay gate); *both*
+**Platform plumbing** — audio is unlocked inside the join tap (autoplay gate); _both_
 AudioContext engines are unlocked in that gesture since the source isn't known until the first
 beat. Routing through Web Audio means the **iOS ringer/mute switch does not silence
 playback**; a MediaSession now-playing card is registered on all platforms; a wake-lock option
@@ -332,7 +332,7 @@ Scope boundaries of the current design (as opposed to defects):
      support, with the profiler attached, through several lock/unlock cycles. The whole
      streaming engine exists on the strength of an arithmetic argument; confirm it.
    - **Scale test:** one screen + 20–30 phones (staff devices) for an hour. Watch screen-side
-     CPU, connection count, follower drift, *and* CDN egress. This is the likeliest place the
+     CPU, connection count, follower drift, _and_ CDN egress. This is the likeliest place the
      star topology breaks, and it's a one-afternoon test.
 3. **Then soak it.** A full-day run with sleep/wake cycles and a deliberately flaky network is
    the only way to find out whether the watchdog, the chain top-up and the clock-ratio
@@ -349,13 +349,13 @@ Scope boundaries of the current design (as opposed to defects):
    self-host signaling (Nostr relay/MQTT broker) or pin to paid relays. Budget this plus
    content hosting as the real infrastructure cost.
 7. **Design for venue Wi-Fi early.** Get on the actual network (or its spec) and confirm
-   P2P/TURN reachability *and* Range-fetch behaviour before UX work builds on instant joins.
+   P2P/TURN reachability _and_ Range-fetch behaviour before UX work builds on instant joins.
 8. **Productionization backlog, roughly in order:** leader restart/recovery UX (screen reboot
    mid-day), download/prefetch progress UI for the "syncing" windows, seamless loop-wrap
    prefetch, multi-zone/room namespacing, telemetry (aggregate drift/latency/engine-mode
    reporting instead of a per-phone debug panel), and a perceptual acceptance test with naive
    users.
-9. **Track WebKit, WebCodecs *and* Chromium's freeze policy.** Pin a quarterly check that the
+9. **Track WebKit, WebCodecs _and_ Chromium's freeze policy.** Pin a quarterly check that the
    assumptions still hold on new releases — element pipeline stalls, `getOutputTimestamp`
    behaviour, `AudioDecoder` availability, whether the lock-screen sink keep-alive still works,
    and whether Chrome still declines to freeze a page over a near-silent audio tap. Keep the
@@ -377,7 +377,7 @@ its own connection without the visitor touching anything. The engine split is th
 architecture, not a workaround smell: it isolates exactly the code that platform media stacks
 force apart.
 
-What is *not* yet proven is the gallery envelope: dozens of simultaneous followers per
+What is _not_ yet proven is the gallery envelope: dozens of simultaneous followers per
 screen, hours-long sessions, the memory ceiling as actually measured rather than calculated,
 and hostile venue networks. The new capabilities also come with new dependencies — a CDN in
 the playback path for the whole session, WebCodecs on the device, and an undocumented Chrome
