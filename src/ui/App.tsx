@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSync } from '../hooks/useSync'
+import { useSync, readRejoinRoom } from '../hooks/useSync'
 import { STRATEGY } from '../transport/config'
 import { ScreenView } from './ScreenView'
 import { FollowerView } from './FollowerView'
@@ -16,7 +16,9 @@ export function App() {
 
 function Landing({ api }: { api: ReturnType<typeof useSync> }) {
   const params = new URLSearchParams(window.location.search)
-  const [code, setCode] = useState(params.get('room')?.toUpperCase() ?? '')
+  // Prefill from ?room=, else the room we were in before a reload/tab-discard.
+  const rejoinRoom = readRejoinRoom()
+  const [code, setCode] = useState(params.get('room')?.toUpperCase() ?? rejoinRoom ?? '')
   const connecting = api.phase === 'connecting'
 
   return (
@@ -26,6 +28,16 @@ function Landing({ api }: { api: ReturnType<typeof useSync> }) {
         Fixed screen leader · followers' audio synced to the video clock · over WebRTC ({STRATEGY})
       </p>
       {api.error && <p className="error">⚠ {api.error}</p>}
+      {rejoinRoom && !api.error && (
+        <div className="card">
+          <p>
+            🎧 You were listening in room <code>{rejoinRoom}</code>. Reconnect to resume synced audio.
+          </p>
+          <button disabled={connecting} onClick={() => void api.join(rejoinRoom)}>
+            {connecting ? 'Reconnecting…' : `🎧 Rejoin ${rejoinRoom}`}
+          </button>
+        </div>
+      )}
 
       <div className="card">
         <h2>Be the screen</h2>

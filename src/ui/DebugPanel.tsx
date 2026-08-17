@@ -39,6 +39,7 @@ export function DebugPanel({ api }: { api: SyncApi }) {
           {row('mode', <code>{api.correction.mode}</code>)}
           {row('playbackRate', api.correction.rate.toFixed(3))}
           {row('audio out', api.audioRouted ? 'web-audio (mute-switch safe)' : 'element')}
+          {row('engine', <code>{api.audioEngine}</code>)}
           {api.audioBgKeepAlive && row('bg keep-alive', '🔒 stream sink (locks OK)')}
           {row('latency comp', `auto ${api.audioAutoLatencyMs.toFixed(0)} ms`)}
           {row(

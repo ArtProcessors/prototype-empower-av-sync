@@ -2413,6 +2413,7 @@ __metadata:
     "@types/react": "npm:^18.3.12"
     "@types/react-dom": "npm:^18.3.1"
     "@vitejs/plugin-react": "npm:~5.1.3"
+    mp4box: "npm:~2.4.1"
     qrcode: "npm:~1.5.4"
     react: "npm:^18.3.1"
     react-dom: "npm:^18.3.1"
@@ -3520,6 +3521,13 @@ __metadata:
   dependencies:
     minipass: "npm:^7.1.2"
   checksum: 10c0/5aad75ab0090b8266069c9aabe582c021ae53eb33c6c691054a13a45db3b4f91a7fb1bd79151e6b4e9e9a86727b522527c0a06ec7d45206b745d54cd3097bcec
+  languageName: node
+  linkType: hard
+
+"mp4box@npm:~2.4.1":
+  version: 2.4.1
+  resolution: "mp4box@npm:2.4.1"
+  checksum: 10c0/9a21d861dc77935547e6594b4d81aa545c7bf162135017c78475f67b5ab987da06eff58693ff47234b0c9b94a7f2c1bb1adb3f1fbbffdac591bec3efe899c24c
   languageName: node
   linkType: hard
 
