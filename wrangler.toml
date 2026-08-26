@@ -12,6 +12,12 @@ name = "empower-av-sync"
 main = "worker/index.ts"
 compatibility_date = "2025-09-01"
 
+# Worker Logs, so a deployed session can be diagnosed from the dashboard or
+# `wrangler tail` rather than guessing. Remove if you would rather not retain
+# logs.
+[observability]
+enabled = true
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
