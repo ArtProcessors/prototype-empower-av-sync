@@ -62,10 +62,16 @@ async function reportSelectedCandidatePair(
     const protocol = local?.protocol ?? '?'
     const networkType = local?.networkType ?? '?'
 
+    // This build relays everything through Cloudflare, so anything other than
+    // a relay pair means the pinning has been defeated and the test would be
+    // measuring a direct connection instead of the service.
+    const relayed = localType === 'relay'
+
     recordDiagnostic(
       'ice',
       `${shortPeerId(peerId)} path ${localType}→${remoteType}` +
-        ` over ${protocol} (${networkType})`,
+        ` over ${protocol} (${networkType})` +
+        `${relayed ? '' : ' — NOT RELAYED'}`,
     )
   } catch {
     /* stats are best-effort — never let diagnostics break the session */

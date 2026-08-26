@@ -18,6 +18,7 @@ import {
 } from '../content'
 import { startLifecycleMonitoring } from '../diagnostics/lifecycle-monitor'
 import { recordDiagnostic } from '../diagnostics/session-log'
+import { preflightTurn } from '../diagnostics/turn-preflight'
 import {
   AudioSyncController,
   type CorrectionInfo,
@@ -189,6 +190,9 @@ export function useSync(): SyncApi {
   // what we are trying to catch, and it can land before or after joining.
   useEffect(() => {
     startLifecycleMonitoring()
+    // Fire-and-forget: records whether Cloudflare TURN is reachable and the
+    // credentials are still valid, before anyone tries to join.
+    preflightTurn()
   }, [])
 
   useEffect(() => {
