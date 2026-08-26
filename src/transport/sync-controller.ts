@@ -20,13 +20,8 @@ import {
   type Beat,
   type ClockSample,
 } from '../sync/sync-math'
-import {
-  APP_ID,
-  RTC_CONFIG,
-  RELAY_URLS,
-  STRATEGY,
-  loadStrategy,
-} from './config'
+import { APP_ID, RELAY_URLS, STRATEGY, loadStrategy } from './config'
+import { describeIceConfig, getRtcConfig } from './ice-config'
 
 /** Which end of the star topology this device is. */
 export type Role = 'screen' | 'follower'
@@ -113,13 +108,21 @@ export async function joinAsFollower(
 }
 
 async function create(roomCode: string, role: Role): Promise<SyncController> {
-  const { joinRoom, selfId } = await loadStrategy()
+  // Fetched per join, and therefore per *rejoin* too: a credential that expired
+  // during a sleep would otherwise let the watchdog reconnect forever against
+  // an ICE config that can no longer allocate a relay candidate.
+  const [{ joinRoom, selfId }, rtcConfig] = await Promise.all([
+    loadStrategy(),
+    getRtcConfig(),
+  ])
+
+  recordDiagnostic('ice', `joining as ${role} — ${describeIceConfig()}`)
 
   const room: Room = joinRoom(
     {
       appId: APP_ID,
       password: roomCode,
-      rtcConfig: RTC_CONFIG,
+      rtcConfig,
       ...(STRATEGY === 'nostr' && RELAY_URLS.length
         ? { relayConfig: { urls: RELAY_URLS } }
         : {}),

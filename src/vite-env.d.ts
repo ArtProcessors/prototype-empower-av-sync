@@ -13,12 +13,6 @@ interface ImportMetaEnv {
   readonly VITE_TRYSTERO_STRATEGY?: string
   /** Comma-separated Nostr relay URLs overriding Trystero's defaults. */
   readonly VITE_NOSTR_RELAYS?: string
-  /** TURN server URL, for networks that block direct peer connections. */
-  readonly VITE_TURN_URL?: string
-  /** Username for {@link ImportMetaEnv.VITE_TURN_URL}. */
-  readonly VITE_TURN_USERNAME?: string
-  /** Credential for {@link ImportMetaEnv.VITE_TURN_URL}. */
-  readonly VITE_TURN_CREDENTIAL?: string
 }
 
 interface ImportMeta {

@@ -14,18 +14,34 @@ but with a purpose-built continuous sync engine instead of the gallery's event m
 
 ## Run
 
+**Two processes, always.** Every connection is relayed through Cloudflare TURN, so the app
+cannot join a room without the Worker that mints its credentials. Run both in separate
+terminals and open **Vite's** URL, not Wrangler's:
+
 ```bash
 nvm use && corepack enable
 yarn install
-yarn dev          # → http://localhost:3100
+
+yarn worker:dev   # :8787 — serves /api/ice
+yarn dev          # :3100 — open this one
 ```
 
-| Command        | What it does                                                    |
-| -------------- | --------------------------------------------------------------- |
-| `yarn dev`     | Dev server on :3100 (no service worker)                         |
-| `yarn build`   | Type-check + production build (builds the SW)                   |
-| `yarn preview` | Serve the prod build on :4273 (SW active — for offline testing) |
-| `yarn sim`     | Unit checks for the sync math (`test/sync-sim.ts`)              |
+Vite proxies `/api` to the Worker, so the credential fetch is same-origin locally just as it
+is in production. Put the TURN key in `.dev.vars` first (see `.env.example`); no Cloudflare
+login is needed for local work.
+
+| Command           | What it does                                                              |
+| ----------------- | ------------------------------------------------------------------------- |
+| `yarn dev`        | Dev server on :3100 (HMR, no service worker) — **open this one**          |
+| `yarn worker:dev` | TURN-credential Worker on :8787 (`/api/ice`), proxied from Vite           |
+| `yarn build`      | Type-check app + Worker, production build (builds the SW)                 |
+| `yarn preview`    | Prod build on :4273 (SW active — offline testing; still needs the Worker) |
+| `yarn deploy`     | Build, then deploy the Worker + SPA to Cloudflare                         |
+| `yarn sim`        | Unit checks for the sync math (`test/sync-sim.ts`)                        |
+
+To rehearse exactly what deploys — **one origin** serving both the app and `/api/ice`, service
+worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is the only
+local mode with production's topology.
 
 ## Try it
 
@@ -83,8 +99,8 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
   **`test` clip** play from cache (precache includes `screen.mp4` + `soundtrack.m4a`). The
   long options are **not** offline: their audio is range-fetched throughout playback.
 - **Two-device (manual):** laptop = screen, phone (headphones) = follower — clicks line up
-  with flashes; drift stays small on WiFi and cellular (enable TURN via `VITE_TURN_*` if a
-  direct connection can't form).
+  with flashes; drift stays small on WiFi and cellular. Every connection is relayed through
+  Cloudflare TURN, so the Worker must be running (`yarn worker:dev`) or joining fails outright.
 - **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing, the page
   stays alive (keep-alive tap), the watchdog re-establishes the connection if Doze drops it, and
   on wake the follower hands back to a synced source. Worth watching the screen's listener count
@@ -188,7 +204,16 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
 - The follower's soundtrack is a **stream-copy of the video's own AAC**, so their timelines
   are bit-identical (no encoder-delay offset).
 - Fixed leader (no migration); star topology (no gossip relay). Swap the Trystero strategy
-  with `VITE_TRYSTERO_STRATEGY`; STUN is on, TURN is a `VITE_TURN_*` seam.
+  with `VITE_TRYSTERO_STRATEGY`. ICE is **pinned to Cloudflare TURN, relay-only**
+  (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers replaced): the
+  Android connection-stability work needs every peer on the relay, so there is deliberately
+  no direct-path or public-STUN fallback to hide behind.
+- **TURN credentials are minted per client, not built in.** A Cloudflare Worker
+  ([worker/index.ts](worker/index.ts)) holds the long-lived TURN key and issues a short-lived
+  pair from `/api/ice`; the client re-fetches whenever its grant is within 5 minutes of
+  expiry, **including on the watchdog's rejoin**. A baked-in credential would expire
+  mid-session and make every reconnect fail silently — indistinguishable from the bug the
+  relay was added to fix.
 - Same-network tests show ~0 ms clock offset; across real devices the offset estimate
   (NTP-class clocks + RTT compensation) is what keeps drift small — the instrument to watch
   is the follower's drift meter.

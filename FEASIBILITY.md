@@ -247,8 +247,10 @@ Scope boundaries of the current design (as opposed to defects):
 - **Joining needs the network, and long-form playback keeps needing it.** The app shell and
   test clip are offline after first load, but matchmaking requires internet at join time and
   streaming windows require it throughout. A venue with captive-portal or client-isolated
-  Wi-Fi may also block P2P entirely — the TURN seam (`VITE_TURN_*`) exists but no TURN server
-  is provisioned.
+  Wi-Fi may also block P2P entirely. Every connection is now relayed through Cloudflare TURN
+  (relay-only ICE, `turn:`/`turns:` over both UDP and TCP), which is what a hostile venue
+  network needs — at the cost of a hard dependency on that service and on credentials that
+  expire.
 - **Correction envelope.** The nudge closes ≤ 0.6 s (element) / ≤ 0.25 s (buffer, stream) of
   drift at at most 2–3 %/s; anything larger is a hard restart. In practice restarts happen at
   join, at wake, and at the loop wrap — which is the intended behaviour.

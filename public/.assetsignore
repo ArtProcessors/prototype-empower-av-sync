@@ -1,0 +1,8 @@
+# Excluded from the Cloudflare Worker's asset upload (Workers caps a single
+# asset at 25 MiB, and these run to ~128 MiB).
+#
+# public/media/ holds the large, local-only screen videos used for on-device
+# testing; they are gitignored and the deployed build serves the real content
+# from remote hosting instead. The small offline test clip lives in
+# src/content/ and is bundled, so it is unaffected.
+media/

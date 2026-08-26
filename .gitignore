@@ -1,6 +1,17 @@
 node_modules
 dist
 dev-dist
+
+# Local TURN credentials (see .env.example)
+.env
+.env.local
+.env.*.local
+# Wrangler's local secrets file — holds the real TURN key and API token
+.dev.vars
+.dev.vars.*
+
+# Wrangler local state
+.wrangler
 .DS_Store
 *.log
 

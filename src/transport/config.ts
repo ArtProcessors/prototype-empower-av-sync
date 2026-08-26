@@ -1,8 +1,30 @@
 /**
- * Transport configuration: Trystero matchmaking strategy + ICE servers.
+ * Transport configuration: Trystero matchmaking strategy + the ICE endpoints
+ * every peer connection is pinned to.
  *
  * Defaults to Nostr (public-internet signaling, not same-LAN discovery). Swap
  * via the `VITE_TRYSTERO_STRATEGY` environment variable.
+ *
+ * **This build is pinned to Cloudflare's TURN service and nothing else.** The
+ * point of the exercise is to find out whether a managed relay fixes the
+ * Android connection drops, and that question is only answerable if every peer
+ * actually goes through the relay. So:
+ *
+ *  - The ICE server list is exactly {@link CLOUDFLARE_ICE_URLS}. Trystero
+ *    otherwise contributes three Google STUN servers of its own; passing
+ *    `iceServers` inside `rtcConfig` replaces that list rather than adding to
+ *    it (`@trystero-p2p/core`, `peer.mjs`), which is why the config is built
+ *    this way and not via Trystero's `turnConfig` option — that one *appends*
+ *    to the defaults.
+ *  - {@link ICE_TRANSPORT_POLICY} is `relay`, so host and server-reflexive
+ *    candidates are never gathered. Without it ICE would happily pick a direct
+ *    path on the venue LAN and the relay would go untested.
+ *
+ * Credentials are NOT here: they are short-lived and fetched at join time from
+ * the Worker (see `ice-config.ts`). Relaying costs a round trip, which for this
+ * app is close to free — the clock offset is measured with Cristian's algorithm
+ * and the lowest-RTT sample wins, so the extra hop is compensated rather than
+ * showing up as drift.
  */
 
 /** Trystero matchmaking backend used to find peers in a room. */
@@ -16,31 +38,29 @@ export const STRATEGY: Strategy =
 export const APP_ID = 'empower-av-sync-v1'
 
 /**
- * Public STUN servers, plus the optional TURN relay from the environment for
- * networks that block direct peer connections.
+ * The only ICE endpoints this build will use. Both TURN transports are offered
+ * so a network that blocks UDP can still relay over TCP, and `turns:` on 5349
+ * covers networks that only allow TLS.
+ *
+ * Cloudflare also issues endpoints on ports 53, 80 and 443, which get through
+ * networks that block 3478/5349 outright; `ice-config.ts` logs any it offers
+ * that are not listed here, so widening this list is a one-line change once the
+ * relay itself is proven.
  */
-function buildIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
-    {
-      urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'],
-    },
-  ]
+export const CLOUDFLARE_ICE_URLS = [
+  'stun:stun.cloudflare.com:3478',
+  'turn:turn.cloudflare.com:3478?transport=udp',
+  'turn:turn.cloudflare.com:3478?transport=tcp',
+  'turns:turn.cloudflare.com:5349?transport=tcp',
+  'turn:turn.cloudflare.com:80?transport=tcp',
+  'turns:turn.cloudflare.com:443?transport=tcp',
+]
 
-  const turnUrl = import.meta.env.VITE_TURN_URL
-
-  if (turnUrl) {
-    servers.push({
-      urls: turnUrl,
-      username: import.meta.env.VITE_TURN_USERNAME,
-      credential: import.meta.env.VITE_TURN_CREDENTIAL,
-    })
-  }
-
-  return servers
-}
-
-/** ICE configuration handed to every peer connection. */
-export const RTC_CONFIG: RTCConfiguration = { iceServers: buildIceServers() }
+/**
+ * Relay-only: no host or server-reflexive candidates, so there is no direct
+ * path for a connection to quietly fall back to.
+ */
+export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = 'relay'
 
 /**
  * Optional relay override (see empower-peer-to-peer notes). Leave unset for

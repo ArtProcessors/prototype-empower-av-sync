@@ -8,11 +8,14 @@
   "scripts": {
     "start": "vite serve",
     "dev": "vite serve",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && yarn worker:check && vite build",
     "preview": "vite preview",
     "sim": "node test/sync-sim.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "worker:check": "tsc --noEmit -p worker/tsconfig.json",
+    "worker:dev": "wrangler dev --port 8787",
+    "deploy": "yarn build && wrangler deploy"
   },
   "dependencies": {
     "@trystero-p2p/mqtt": "~0.25.2",
@@ -24,6 +27,7 @@
     "trystero": "~0.25.2"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "~5.20260826.1",
     "@types/qrcode": "~1.5.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -37,6 +41,7 @@
     "workbox-precaching": "~7.4.0",
     "workbox-range-requests": "~7.4.0",
     "workbox-routing": "~7.4.0",
-    "workbox-strategies": "~7.4.0"
+    "workbox-strategies": "~7.4.0",
+    "wrangler": "~4.126.0"
   }
 }

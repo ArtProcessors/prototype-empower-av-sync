@@ -1,0 +1,30 @@
+# Cloudflare Worker for the A/V sync app: serves the built SPA and mints
+# short-lived TURN credentials at /api/ice.
+#
+# Secrets (never commit these — set them once per environment):
+#   wrangler secret put TURN_KEY_ID
+#   wrangler secret put TURN_KEY_API_TOKEN
+#
+# Then:
+#   yarn build && yarn deploy
+
+name = "empower-av-sync"
+main = "worker/index.ts"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# The app is a single page (rooms are a ?room= query, not a route), so anything
+# unmatched should still return index.html.
+not_found_handling = "single-page-application"
+
+[vars]
+# Credential lifetime. Long enough that a visitor session never straddles an
+# expiry; short enough that a leaked pair stops working the same day.
+TURN_TTL_SECONDS = "7200"
+
+# Comma-separated origins allowed to request credentials. Deters casual
+# cross-site use — not authentication (see worker/index.ts). Set this to your
+# deployed origin before going live; leave empty for local development.
+ALLOWED_ORIGINS = ""
