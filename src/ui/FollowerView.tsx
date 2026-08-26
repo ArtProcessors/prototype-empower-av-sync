@@ -1,5 +1,6 @@
 import type { SyncApi } from '../hooks/useSync'
 import { DebugPanel } from './DebugPanel'
+import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { driftClassName } from './drift'
 import { KeepAwakeOption } from './KeepAwakeOption'
 
@@ -49,6 +50,7 @@ export function FollowerView({ api }: { api: SyncApi }) {
       )}
 
       <DebugPanel api={api} />
+      <DiagnosticsPanel />
     </main>
   )
 }

@@ -203,3 +203,51 @@ select {
   flex: 1;
   word-break: break-word;
 }
+
+/* Connection diagnostics log */
+.diag-actions {
+  margin: 8px 0 4px;
+}
+.diag-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.diag-log li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid #1c1c1c;
+}
+.diag-time {
+  color: #666;
+  flex-shrink: 0;
+}
+.diag-cat {
+  width: 68px;
+  flex-shrink: 0;
+  color: #888;
+}
+.diag-cat-ice {
+  color: #8ab4ff;
+}
+.diag-cat-peer {
+  color: #f0b429;
+}
+.diag-cat-page {
+  color: #c58af9;
+}
+.diag-cat-timer {
+  color: #f87171;
+}
+.diag-cat-transport {
+  color: #7ad7a0;
+}
+.diag-msg {
+  flex: 1;
+  word-break: break-word;
+}

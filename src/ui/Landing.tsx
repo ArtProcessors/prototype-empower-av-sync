@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { readRejoinRoom, type SyncApi } from '../hooks/useSync'
 import { STRATEGY } from '../transport/config'
+import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 
 const MIN_ROOM_CODE_LENGTH = 3
@@ -91,6 +92,13 @@ export function Landing({ api }: { api: SyncApi }) {
           The tap unlocks audio for this device (needed on iOS).
         </p>
       </div>
+
+      {/*
+        Also shown here so a log survives the round trip: if Chrome discards the
+        tab mid-sleep, the reload lands on this screen and the log — restored
+        from sessionStorage — is still readable.
+      */}
+      <DiagnosticsPanel />
     </main>
   )
 }

@@ -16,6 +16,8 @@ import {
   videoById,
   type VideoOption,
 } from '../content'
+import { startLifecycleMonitoring } from '../diagnostics/lifecycle-monitor'
+import { recordDiagnostic } from '../diagnostics/session-log'
 import {
   AudioSyncController,
   type CorrectionInfo,
@@ -182,6 +184,13 @@ export function useSync(): SyncApi {
   const reconnectingRef = useRef(false)
   const lastReconnectAtRef = useRef(0)
 
+  // Page-lifecycle, network and renderer-liveness logging runs for the whole
+  // page, not just while a session is up — a freeze or a discard is exactly
+  // what we are trying to catch, and it can land before or after joining.
+  useEffect(() => {
+    startLifecycleMonitoring()
+  }, [])
+
   useEffect(() => {
     if (!controller) {
       return
@@ -266,6 +275,9 @@ export function useSync(): SyncApi {
     reconnectingRef.current = true
     lastReconnectAtRef.current = Date.now()
 
+    const startedAt = Date.now()
+    recordDiagnostic('transport', `rejoining room ${code}…`)
+
     try {
       // Leave first — rejoining the same room while the dead session lingers
       // can collide.
@@ -275,8 +287,20 @@ export function useSync(): SyncApi {
       syncEpochRef.current = rejoined.getState().syncEpoch
       clockReadyRef.current = rejoined.getState().clockReady
       setController(rejoined)
-    } catch {
-      /* try again on the next watchdog tick */
+
+      recordDiagnostic(
+        'transport',
+        `rejoined in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+      )
+    } catch (caught) {
+      // Worth logging rather than swallowing: a rejoin that fails because the
+      // signalling relay is unreachable is a different problem from one the
+      // peer connection caused.
+      recordDiagnostic(
+        'transport',
+        `rejoin FAILED after ${((Date.now() - startedAt) / 1000).toFixed(1)}s` +
+          ` — ${caught instanceof Error ? caught.message : String(caught)}`,
+      )
     } finally {
       reconnectingRef.current = false
     }

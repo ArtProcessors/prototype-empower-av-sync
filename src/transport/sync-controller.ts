@@ -12,6 +12,8 @@
  */
 import type { Room } from 'trystero'
 
+import { monitorPeerConnection } from '../diagnostics/peer-monitor'
+import { recordDiagnostic } from '../diagnostics/session-log'
 import {
   estimateOffset,
   bestOffset,
@@ -151,8 +153,32 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
   const refreshPeers = () =>
     set({ peerCount: Object.keys(room.getPeers()).length })
 
-  room.onPeerJoin = () => refreshPeers()
+  // Detach functions for the per-peer connection monitors, keyed by peer id.
+  const peerMonitors = new Map<string, () => void>()
+
+  const stopMonitoring = (peerId: string) => {
+    peerMonitors.get(peerId)?.()
+    peerMonitors.delete(peerId)
+  }
+
+  room.onPeerJoin = peerId => {
+    const connection = room.getPeers()[peerId]
+
+    if (connection) {
+      stopMonitoring(peerId)
+      peerMonitors.set(peerId, monitorPeerConnection(peerId, connection))
+    }
+
+    recordDiagnostic('peer', `join ${peerId.slice(0, 6)}`)
+    refreshPeers()
+  }
+
   room.onPeerLeave = peerId => {
+    // A leave landing ~5 s after an ICE `disconnected` in the log is Trystero's
+    // own teardown timer firing, not the network giving up.
+    recordDiagnostic('peer', `LEAVE ${peerId.slice(0, 6)}`)
+    stopMonitoring(peerId)
+
     if (peerId === state.screenId && role === 'follower') {
       set({ screenOnline: false })
     }
@@ -237,6 +263,11 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
       const needsResync = !state.screenOnline || gap > RESYNC_GAP_MS
 
       if (needsResync) {
+        recordDiagnostic(
+          'beat',
+          `beats resumed after ${(gap / 1000).toFixed(1)}s — resyncing`,
+        )
+
         clockSamples = []
         set({ offsetMs: 0, rttMs: 0, clockReady: false })
         sampleClock()
@@ -262,6 +293,10 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
           beatAge > SCREEN_STALE_MS &&
           state.screenOnline
         ) {
+          recordDiagnostic(
+            'beat',
+            `no beat for ${(beatAge / 1000).toFixed(1)}s — screen offline`,
+          )
           clockSamples = []
           set({
             screenOnline: false,
@@ -303,6 +338,11 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
         clearTimeout(timer)
       }
 
+      for (const detach of peerMonitors.values()) {
+        detach()
+      }
+
+      peerMonitors.clear()
       listeners.clear()
       await room.leave()
     },

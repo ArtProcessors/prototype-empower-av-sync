@@ -1,5 +1,6 @@
 import type { SyncApi } from '../hooks/useSync'
 import { DebugPanel } from './DebugPanel'
+import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import { QRCode } from './QRCode'
 
@@ -42,6 +43,7 @@ export function ScreenView({ api }: { api: SyncApi }) {
       </div>
 
       <DebugPanel api={api} />
+      <DiagnosticsPanel />
     </main>
   )
 }
