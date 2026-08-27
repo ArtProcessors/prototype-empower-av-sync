@@ -74,8 +74,18 @@ yarn deploy
 ```
 
 The same variable works for `wrangler secret put`, so the whole flow needs no browser login.
-Do **not** put the token in `.env` — Wrangler would read it, but so does Vite, and Worker
-secrets are deliberately kept out of any file Vite opens (see `.env.example`).
+
+The token belongs to you, not to the repo, so keep it out of the project. For a one-off,
+`read -rs CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN` avoids leaving it in shell
+history; for repeat deploys, the macOS Keychain
+(`security add-generic-password -a "$USER" -s cloudflare-api-token -w`, read back with
+`security find-generic-password … -w`) keeps it encrypted at rest. A file outside the repo
+also works via `yarn wrangler deploy --env-file ~/.cloudflare.env`.
+
+Do **not** put it in `.env` (Wrangler reads it, but so does Vite — see `.env.example`), and
+do **not** put it in `.dev.vars`: that file populates the _Worker's_ `env` bindings, so an
+account-level token there would be handed to Worker code at runtime rather than
+authenticating the CLI.
 
 **First deploy, in order.** The `workers.dev` subdomain is not knowable until the Worker
 exists, so locking the endpoint down takes two passes:
