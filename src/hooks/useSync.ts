@@ -17,6 +17,10 @@ import {
   type VideoOption,
 } from '../content'
 import { startLifecycleMonitoring } from '../diagnostics/lifecycle-monitor'
+import {
+  networkLooksUp,
+  startReachabilityProbe,
+} from '../diagnostics/reachability'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import { preflightTurn } from '../diagnostics/turn-preflight'
 import {
@@ -190,6 +194,7 @@ export function useSync(): SyncApi {
   // what we are trying to catch, and it can land before or after joining.
   useEffect(() => {
     startLifecycleMonitoring()
+    startReachabilityProbe()
     // Fire-and-forget: records whether Cloudflare TURN is reachable and the
     // credentials are still valid, before anyone tries to join.
     preflightTurn()
@@ -292,9 +297,14 @@ export function useSync(): SyncApi {
       clockReadyRef.current = rejoined.getState().clockReady
       setController(rejoined)
 
+      // Deliberately not "rejoined": all that has happened is that a room
+      // object exists. Whether a peer connects is a separate event, and
+      // conflating the two made an Android sleep log read as seven successful
+      // recoveries when in fact none of them ever peered.
       recordDiagnostic(
         'transport',
-        `rejoined in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+        `room rebuilt in ${((Date.now() - startedAt) / 1000).toFixed(1)}s` +
+          ' — awaiting peers',
       )
     } catch (caught) {
       // Worth logging rather than swallowing: a rejoin that fails because the
@@ -334,6 +344,16 @@ export function useSync(): SyncApi {
       }
 
       const hidden = document.visibilityState !== 'visible'
+
+      // While hidden, only spend a rejoin when a probe has just shown the
+      // network is actually usable. On the Android sleep test the watchdog
+      // rebuilt the room every 45 s, seven times, and never once peered —
+      // pure battery and signalling-relay churn against a radio that was not
+      // listening.
+      if (hidden && !networkLooksUp()) {
+        return
+      }
+
       const cooldown = hidden
         ? HIDDEN_RECONNECT_COOLDOWN_MS
         : RECONNECT_COOLDOWN_MS

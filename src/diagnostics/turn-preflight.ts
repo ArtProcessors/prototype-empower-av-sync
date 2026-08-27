@@ -57,7 +57,13 @@ export async function preflightTurn(): Promise<void> {
     const candidate = event.candidate
 
     if (candidate?.candidate && candidate.type === 'relay') {
-      relayProtocols.add(candidate.protocol ?? '?')
+      // Not `protocol`: on a relay candidate that is always `udp` (the leg
+      // beyond the TURN server). `relayProtocol` is how this device reaches
+      // TURN — the link that matters when a radio starts dropping traffic.
+      const relayProtocol = (candidate as { relayProtocol?: string })
+        .relayProtocol
+
+      relayProtocols.add(relayProtocol ?? candidate.protocol ?? '?')
     }
   })
 

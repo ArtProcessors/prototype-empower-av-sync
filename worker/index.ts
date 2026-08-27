@@ -49,6 +49,15 @@ export interface Env {
 /** Path the client fetches its ICE configuration from. */
 const ICE_PATH = '/api/ice'
 
+/**
+ * Cheap liveness endpoint. The client polls it while the page is hidden to
+ * find out whether the phone still has a usable network at all — which splits
+ * "the radio is asleep" from "the radio is fine but WebRTC cannot re-peer in
+ * the background". Those two have completely different answers, and nothing
+ * else in the log distinguishes them.
+ */
+const PING_PATH = '/api/ping'
+
 /** Fallback credential lifetime when `TURN_TTL_SECONDS` is unset. */
 const DEFAULT_TTL_SECONDS = 7200
 
@@ -180,6 +189,13 @@ async function issueIceConfig(env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+
+    if (url.pathname === PING_PATH) {
+      return new Response(null, {
+        status: 204,
+        headers: { 'cache-control': 'no-store' },
+      })
+    }
 
     if (url.pathname === ICE_PATH) {
       const rejected = checkOrigin(request, env)

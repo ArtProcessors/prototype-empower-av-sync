@@ -59,8 +59,16 @@ async function reportSelectedCandidatePair(
     const remote = stats.get(pair.remoteCandidateId ?? '')
     const localType = local?.candidateType ?? '?'
     const remoteType = remote?.candidateType ?? '?'
-    const protocol = local?.protocol ?? '?'
     const networkType = local?.networkType ?? '?'
+
+    // `protocol` on a relay candidate always reads `udp` — that is the relayed
+    // leg between the TURN server and the far peer, not the link this phone
+    // actually holds. The transport we care about, the one power-save might be
+    // dropping, is `relayProtocol` (udp | tcp | tls). It is Chromium-only and
+    // absent from the DOM types, hence the cast.
+    const relayProtocol = (local as { relayProtocol?: string } | undefined)
+      ?.relayProtocol
+    const protocol = relayProtocol ?? local?.protocol ?? '?'
 
     // This build relays everything through Cloudflare, so anything other than
     // a relay pair means the pinning has been defeated and the test would be
