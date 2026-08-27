@@ -482,6 +482,14 @@ export function useSync(): SyncApi {
       syncEpochRef.current = follower.getState().syncEpoch
       clockReadyRef.current = follower.getState().clockReady
 
+      // Start the watchdog's cooldown now, so a fresh join gets the same grace
+      // period a rejoin does. A follower begins with `screenOnline: false` and
+      // stays that way until the first beat lands, which takes a couple of
+      // seconds of peering — with the cooldown still sitting at 0 the watchdog
+      // read that as a dead link and tore the connection down about a second
+      // after it was made, on every single join.
+      lastReconnectAtRef.current = Date.now()
+
       // Remember the room so a background tab-discard + reload can offer a
       // one-tap rejoin (audio still needs the tap, so we can't fully
       // auto-rejoin).
