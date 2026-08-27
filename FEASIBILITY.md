@@ -133,19 +133,47 @@ re-routed, rather than being folded into an EMA that could only crawl.
   resumes at the last known-good clock ratio. A generation counter invalidates any decode
   still in flight across every graph transition (in-flight decodes scheduling onto a graph
   being reset was crashing the renderer just after wake).
+- **Screen-off kills the radio, and that is the end of the matter.** Measured on Android
+  (Chrome 151) with a `/api/ping` probe running through a screen-off: a plain HTTPS `GET` to
+  Cloudflare timed out **sixteen times in a row**, then started failing outright in under
+  100 ms. Meanwhile the renderer was untouched — no freeze, no throttling, the probe timer
+  holding 30 s intervals to within 100 ms for nineteen minutes. The device powers its Wi-Fi
+  down at screen-off; the page is alive with no network at all.
+
+  Three things follow, and they close off most of the obvious avenues:
+
+  - **Transport choice is irrelevant.** A TCP/TLS-only ICE set and a UDP-only set were
+    measured back to back (`relay→relay over tcp` vs `over udp`). Both connections died within
+    seconds of screen-off. The relay is not the weak link.
+  - **No application-layer transport fixes this.** A WebSocket to a self-hosted relay — the
+    obvious next move, and one this spike came close to building — would fail exactly as hard
+    as a peer connection does. If a bare `fetch` cannot complete, nothing can.
+  - **Trystero's 5 s teardown stops mattering.** It closes a peer 5 s after ICE reports
+    `disconnected` where the spec would wait ~30 s for `failed`, which is genuinely too
+    aggressive for a phone — but the network here stays down for _minutes_, so patching it
+    would change nothing.
+
+  The only lever a web page has is **not letting the screen sleep**: the Screen Wake Lock,
+  already wired to the "Keep screen awake" checkbox but **opt-in and off by default**. Held,
+  the radio stays up and the session survives. Not held, the link dies within about ten
+  seconds of screen-off and does not return until the user wakes the phone — at which point
+  peering recovers within seconds, every time.
+
+  Note the knock-on for long-form content: audio free-runs across the outage on its
+  pre-scheduled chain, so **precached** sources keep playing, but the streaming engine
+  range-fetches a window every 45 s and will starve. Long content plus a sleeping phone is
+  silence.
+
 - **A transport watchdog rejoins the room, including while asleep**
-  ([useSync.ts](src/hooks/useSync.ts)). Android Doze throttles the network a few minutes into a
-  screen-off and WebRTC drops the peer connection when its consent-freshness checks fail, so the
-  follower silently disappears from the screen's listener count and stops receiving beats even
-  though its audio is still free-running. If beats have been absent > 6 s the follower leaves
+  ([useSync.ts](src/hooks/useSync.ts)). If beats have been absent > 6 s the follower leaves
   and rejoins _without touching the audio engine_ — no gesture is needed and the chain keeps
-  playing across the reconnect. Because the keep-alive tap means the page is still running, this
-  now retries **while hidden** too, at a 45 s cooldown rather than the 10 s used when visible
-  (battery, and Doze will refuse most attempts anyway — but it recovers on Doze's maintenance
-  windows instead of waiting for the user to pick the phone up). On becoming visible it rejoins
-  immediately if the link is stale, rather than waiting out the staleness window. If the tab is
-  discarded outright, the room code is kept in `sessionStorage` and the landing page offers a
-  one-tap **Rejoin** (audio still needs a gesture, so that part can't be automatic).
+  playing across the reconnect. While hidden, a rejoin is only attempted once the reachability
+  probe has just shown the network is usable: before that gate, a five-minute sleep burned
+  seven full room rebuilds against a radio that was not listening, each one reporting success
+  because a room object had been created while no peer ever connected. On becoming visible it
+  rejoins immediately if the link is stale. If the tab is discarded outright, the room code is
+  kept in `sessionStorage` and the landing page offers a one-tap **Rejoin** (audio still needs
+  a gesture, so that part can't be automatic).
 
 **Platform plumbing** — audio is unlocked inside the join tap (autoplay gate); _both_
 AudioContext engines are unlocked in that gesture since the source isn't known until the first
@@ -167,10 +195,11 @@ screen's 127 MB video for the 15-minute clip.
 - **Playback survives the phone going to sleep.** Pre-scheduled audio-thread chains plus
   clock-ratio free-run mean a locked phone keeps playing and comes back close, then hands over
   to a synced source — rather than stopping or waking up wildly out of sync.
-- **Recovers from Android's connection teardown without the user.** An always-audible
-  keep-alive tap stops Chrome freezing the page, so the beat watchdog keeps running through a
-  sleep and rejoins the room by itself — during Doze's maintenance windows if need be — with
-  audio continuing across the reconnect.
+- **The page genuinely survives a sleep.** Measured: nineteen minutes of screen-off with the
+  probe timer holding 30 s intervals to within 100 ms, no freeze and no throttling. The
+  keep-alive tap works. Audio continues throughout, and on wake peering recovers within
+  seconds without the user doing anything. What does _not_ survive is the network (see
+  "Screen-off kills the radio").
 - **Zero backend.** No sync server, no media server, nothing to host or scale for playback
   itself. Signaling uses public relays; media ships with the PWA or off static hosting.
 - **Negligible sync bandwidth.** ~4 small JSON beats/sec plus a clock ping every 3 s per
@@ -216,14 +245,16 @@ screen's 127 MB video for the 15-minute clip.
   to ±0.5 %).
 - **Staying alive on Android depends on an undocumented browser heuristic.** The keep-alive tap
   works because Chrome won't freeze a page that is "playing audio", and 0.005 gain is a guess at
-  what clears its silence threshold. That's a load-bearing dependency on unspecified behaviour
-  which no feature detection can confirm — if Chrome tightens the threshold or the heuristic, the
-  symptom is a silent connection death minutes into a sleep. It also means a very quiet (~46 dB
-  down), sink-delayed copy of the audio is permanently mixed into Android/desktop foreground
-  output; inaudible in practice, but not a clean signal path.
-- **The watchdog is blunt, and now runs while asleep.** It rejoins whenever the screen looks
-  absent — every 10 s visible, every 45 s hidden — which churns the signaling relays, spends
-  battery on attempts Doze will mostly refuse, and papers over a genuinely offline screen.
+  what clears its silence threshold. Measured working on Chrome 151 for nineteen minutes of
+  screen-off — but it remains a load-bearing dependency on unspecified behaviour that no feature
+  detection can confirm, and if Chrome tightens the threshold the symptom is a silent death
+  minutes into a sleep. It also means a very quiet (~46 dB down), sink-delayed copy of the audio
+  is permanently mixed into Android/desktop foreground output; inaudible in practice, but not a
+  clean signal path.
+- **The watchdog papers over a genuinely offline screen.** It rejoins whenever beats stop, so a
+  screen that has actually gone away is indistinguishable from a link that needs rebuilding.
+  Hidden attempts are now gated on the reachability probe, which stopped the worst of the churn,
+  but the ambiguity remains.
 - **Buffer/stream rate nudges are not pitch-preserved.** `AudioBufferSourceNode.playbackRate`
   shifts pitch; the clamp is kept subtle (±2 %) so it's hard to hear, but it's a compromise
   the element engine doesn't make.
@@ -303,12 +334,12 @@ Scope boundaries of the current design (as opposed to defects):
   minutes asleep, and whether the wake hand-over is inaudible or a noticeable jump.
 - **The 0.15 s sink-latency constant.** Tuned by ear on one or two devices; unknown across
   Bluetooth codecs and Android OEM audio stacks.
-- **Whether the page really survives, and for how long.** The keep-alive tap and the
-  hidden watchdog are the newest and least-tested mechanisms here: it is not yet established how
-  long a follower keeps its connection through a screen-off, how often a hidden rejoin actually
-  succeeds under Doze, whether the 0.005 tap gain clears the silence threshold on all Chrome
-  builds (or is audible on any device with the volume up), or what the retry loop costs in
-  battery over a gallery day.
+- **Whether the wake lock is enough, over a gallery day.** Screen-off is now known to end the
+  session (see "Screen-off kills the radio"), so the open question has moved: whether holding the
+  Screen Wake Lock for a full 45-minute experience is acceptable for battery and heat, whether
+  visitors leave it on, and what happens on devices that ignore or drop the lock. Also untested
+  across Chrome builds: whether the 0.005 tap gain clears the silence threshold everywhere, and
+  whether it is audible on any device with the volume up.
 - **Hostile venue networks.** Client-isolated Wi-Fi, symmetric NAT, captive portals — i.e.
   whether TURN is a nice-to-have or a requirement, and its cost. Range-fetch behaviour behind
   a caching proxy is also unknown.

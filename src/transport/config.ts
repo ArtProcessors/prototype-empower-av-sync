@@ -38,65 +38,34 @@ export const STRATEGY: Strategy =
 export const APP_ID = 'empower-av-sync-v1'
 
 /**
- * Which TURN transports to offer, selected with `?ice=` at runtime so the
- * choice can be A/B-tested on a phone without a rebuild.
+ * The only ICE endpoints this build will use — every Cloudflare transport and
+ * port, deliberately.
  *
- * Defaults to `tcp`. On an Android sleep test the follower's beats stopped
- * roughly five seconds after screen-off while the page itself stayed fully
- * awake — far too fast for Doze, and the classic signature of power-save
- * dropping UDP flows. The selected pair at the time was `relay→relay over udp`.
- * A TCP relay leg has kernel-level retransmission behind it and survives stalls
- * that kill UDP outright, so it is the standing hypothesis until measured
- * otherwise.
+ * A TCP/TLS-only set was measured against a UDP-only set on Android to test
+ * whether power-save discards UDP flows first. It made no difference: both
+ * died within seconds of screen-off, because the device takes its Wi-Fi down
+ * entirely rather than degrading it (see FEASIBILITY, "Screen-off kills the
+ * radio"). The `?ice=` switch that comparison needed has been removed.
  *
- * Use `?ice=udp` or `?ice=all` to compare against the previous behaviour.
+ * What survives is breadth: ports 53, 80 and 443 get through networks that
+ * block 3478/5349 outright — a real concern for venue Wi-Fi, even though it
+ * was not the cause here. `ice-config.ts` logs anything Cloudflare offers that
+ * is not listed, so drift stays visible.
  */
-export type IceTransportSet = 'all' | 'tcp' | 'udp'
-
-/** STUN, always offered; inert under a relay-only transport policy. */
-const STUN_URLS = ['stun:stun.cloudflare.com:3478']
-
-/**
- * TURN over TCP, TLS first. Port 443 leads because it looks like ordinary
- * HTTPS and gets through the most hostile networks; 80 and the standard ports
- * follow as fallbacks.
- */
-const TCP_URLS = [
+export const CLOUDFLARE_ICE_URLS = [
+  'stun:stun.cloudflare.com:3478',
   'turns:turn.cloudflare.com:443?transport=tcp',
   'turns:turn.cloudflare.com:5349?transport=tcp',
   'turn:turn.cloudflare.com:80?transport=tcp',
   'turn:turn.cloudflare.com:3478?transport=tcp',
-]
-
-/** TURN over UDP — lowest latency, and the first thing power-save discards. */
-const UDP_URLS = [
   'turn:turn.cloudflare.com:3478?transport=udp',
   'turn:turn.cloudflare.com:53?transport=udp',
 ]
 
-function readIceTransportSet(): IceTransportSet {
-  if (typeof location === 'undefined') {
-    return 'tcp'
-  }
-
-  const match = /[?&]ice=(all|tcp|udp)\b/.exec(location.search)
-
-  return match ? (match[1] as IceTransportSet) : 'tcp'
-}
-
-/** TURN transports this session will offer; see {@link IceTransportSet}. */
-export const ICE_TRANSPORT_SET: IceTransportSet = readIceTransportSet()
-
 /**
- * The only ICE endpoints this build will use. `ice-config.ts` logs anything
- * Cloudflare offers that is not listed here, so drift stays visible.
+ * Relay-only: no host or server-reflexive candidates, so there is no direct
+ * path for a connection to quietly fall back to.
  */
-export const CLOUDFLARE_ICE_URLS = [
-  ...STUN_URLS,
-  ...(ICE_TRANSPORT_SET === 'udp' ? [] : TCP_URLS),
-  ...(ICE_TRANSPORT_SET === 'tcp' ? [] : UDP_URLS),
-]
-
 export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = 'relay'
 
 /**

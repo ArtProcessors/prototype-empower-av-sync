@@ -1,37 +1,36 @@
 /**
- * Polls a trivial Worker endpoint while the page is hidden, to find out
- * whether the phone still has a usable network during a screen-off.
+ * Polls a trivial Worker endpoint while the page is hidden, to tell whether the
+ * phone still has a usable network.
  *
- * This exists to settle a question the rest of the log cannot. On an Android
- * sleep test the renderer stayed fully awake — no freeze, no timer stall, the
- * watchdog ticking on schedule — yet seven room rejoins over four and a half
- * minutes produced not one peer connection, and peering succeeded within
- * seconds every time the screen came back on. Two very different explanations
- * fit that:
+ * It was written to settle whether Android sleep kills the radio or merely
+ * stops WebRTC re-peering in the background. It settled it: on test, a plain
+ * `GET` to Cloudflare timed out sixteen times running, then began failing
+ * outright in under 100 ms, while the renderer stayed perfectly awake and the
+ * probe timer kept 30 s intervals to within 100 ms. The device takes its Wi-Fi
+ * down at screen-off. Nothing at the application layer reaches past that — a
+ * WebSocket transport would fail exactly as hard, which is why one was not
+ * built.
  *
- *  - **The radio is asleep.** Nothing at the application layer can help, and
- *    the answer is to make waking fast and inaudible rather than to keep
- *    fighting for a connection.
- *  - **The radio is fine, but WebRTC cannot complete a handshake in the
- *    background.** Then a plain WebSocket — one TCP connection, no ICE, no
- *    signalling round trip — has a real chance where a peer connection does
- *    not, and is worth building.
- *
- * A 204 from `/api/ping` while hidden picks the second; a failure picks the
- * first.
- *
- * The result is also load-bearing, not just diagnostic: {@link networkLooksUp}
- * gates the transport watchdog's rejoin attempts, so an expensive WebRTC
- * rebuild is only tried when a cheap fetch has just proved the network is
- * there.
+ * It stays because the answer is load-bearing: {@link networkLooksUp} gates the
+ * transport watchdog, so an expensive WebRTC rebuild is only attempted once a
+ * cheap fetch has shown the network is actually there. Before that gate, a
+ * five-minute sleep burned seven full room rebuilds against a radio that was
+ * not listening.
  */
 import { recordDiagnostic } from './session-log'
 
 /** Worker route that answers 204 and nothing else. */
 const PING_PATH = '/api/ping'
 
-/** How often to probe while the page is hidden. */
+/** How often to probe while the page is hidden and the network looks healthy. */
 const PROBE_INTERVAL_MS = 30000
+
+/**
+ * Ceiling for the backoff applied while probes keep failing. A sleeping radio
+ * stays asleep, so re-asking every 30 s for nineteen rounds — as the first test
+ * did — only spends battery to learn the same thing.
+ */
+const PROBE_MAX_INTERVAL_MS = 300000
 
 /**
  * Give up on a probe after this long. Deliberately short: a probe that takes
@@ -114,6 +113,21 @@ async function probe(): Promise<void> {
 }
 
 /**
+ * Delay before the next probe: the base interval while things are healthy,
+ * doubling per consecutive failure up to {@link PROBE_MAX_INTERVAL_MS}.
+ */
+function nextDelayMs(): number {
+  if (consecutiveFailures === 0) {
+    return PROBE_INTERVAL_MS
+  }
+
+  return Math.min(
+    PROBE_INTERVAL_MS * 2 ** (consecutiveFailures - 1),
+    PROBE_MAX_INTERVAL_MS,
+  )
+}
+
+/**
  * Start probing. Runs only while the page is hidden, and fires immediately on
  * hide so the first data point lands before the radio has had time to settle.
  * Safe to call more than once.
@@ -125,11 +139,20 @@ export function startReachabilityProbe(): void {
 
   started = true
 
+  const scheduleNext = () => {
+    setTimeout(async () => {
+      await probe()
+      scheduleNext()
+    }, nextDelayMs())
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {
+      // Probe straight away rather than waiting out any accumulated backoff —
+      // the failure count is left alone so a recovery still logs as one.
       probe()
     }
   })
 
-  setInterval(probe, PROBE_INTERVAL_MS)
+  scheduleNext()
 }

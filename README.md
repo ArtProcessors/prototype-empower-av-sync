@@ -159,10 +159,12 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
 - **Two-device (manual):** laptop = screen, phone (headphones) = follower — clicks line up
   with flashes; drift stays small on WiFi and cellular. Every connection is relayed through
   Cloudflare TURN, so the Worker must be running (`yarn worker:dev`) or joining fails outright.
-- **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing, the page
-  stays alive (keep-alive tap), the watchdog re-establishes the connection if Doze drops it, and
-  on wake the follower hands back to a synced source. Worth watching the screen's listener count
-  as well as the phone: a follower that has silently lost its connection still plays. Verified by
+- **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing and the
+  page stays alive (keep-alive tap), but the **network does not**: Android powers its Wi-Fi down
+  at screen-off, so the link dies within ~10 s and only returns when the screen does. Hold the
+  "Keep screen awake" option to keep a session connected. On wake the follower hands back to a
+  synced source. Worth watching the screen's listener count as well as the phone: a follower that
+  has silently lost its connection still plays. Verified by
   device testing rather than measurement; see [FEASIBILITY.md](FEASIBILITY.md) for what's open.
 
 ## Videos & adding your own
@@ -232,14 +234,14 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
      which point a properly synced source starts and the chain is cut at the same de-clicked
      instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway),
      `?sinklat=<sec>` (the sink's assumed added latency, default 0.15) and `?kagain=<gain>`.
-- **Reconnect after sleep:** Android Doze throttles the network a few minutes into a screen-off
-  and WebRTC drops the peer connection when consent-freshness checks fail — the listener
-  vanishes from the screen's count while its audio keeps free-running. A watchdog in
+- **Reconnect after sleep:** Android takes its Wi-Fi down at screen-off — measured, with plain
+  HTTPS fetches timing out sixteen times running while the page itself stayed fully awake — so
+  the listener vanishes from the screen's count while its audio keeps free-running. A watchdog in
   `useSync.ts` rejoins the room if beats have been absent > 6 s, without touching the audio
-  engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. It
-  runs **while hidden too** (45 s cooldown, vs 10 s visible), so recovery can happen in a Doze
-  maintenance window instead of waiting for the user; on becoming visible it rejoins straight
-  away if the link is stale. If the tab is discarded outright, the room code is kept in
+  engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. While
+  hidden it only attempts a rejoin once a `/api/ping` probe has shown the network is back, since
+  otherwise it is rebuilding rooms against a radio that is not listening; on becoming visible it
+  rejoins straight away if the link is stale. If the tab is discarded outright, the room code is kept in
   `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
   real gesture, so that part can't be automatic).
 - **Automatic output-latency compensation (BYOD — no manual calibration):** what you _hear_
