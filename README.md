@@ -57,6 +57,54 @@ visible and audible: the click in your headphones should land on the flash on sc
 The debug panel's `engine` row shows which output path is live (`element`, `buffer`, `stream`,
 or `syncing` while a long soundtrack's first window loads).
 
+## Deploy
+
+One Cloudflare Worker serves both the built SPA and `/api/ice`, so the TURN-credential
+fetch is same-origin in production and there is no CORS surface. `yarn deploy` runs
+`yarn build` first, so the `dist/` it uploads is always current.
+
+**Authenticating.** `wrangler login` works but grants a broad OAuth scope set
+(`workers:write`, `workers_kv:write`, `d1:write`, `pages:write`, `zone:read`, …). Prefer a
+scoped API token — create one from the dashboard's **"Edit Cloudflare Workers"** template
+and export it for the deploy:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...      # add CLOUDFLARE_ACCOUNT_ID if the token sees several
+yarn deploy
+```
+
+The same variable works for `wrangler secret put`, so the whole flow needs no browser login.
+Do **not** put the token in `.env` — Wrangler would read it, but so does Vite, and Worker
+secrets are deliberately kept out of any file Vite opens (see `.env.example`).
+
+**First deploy, in order.** The `workers.dev` subdomain is not knowable until the Worker
+exists, so locking the endpoint down takes two passes:
+
+1. `yarn deploy` — creates the Worker and prints
+   `https://empower-av-sync.<subdomain>.workers.dev`. The app loads, but `/api/ice` returns
+   500 and the diagnostics panel reports `turn preflight FAILED — no credentials`. Expected.
+2. `yarn wrangler secret put TURN_KEY_ID`, then the same for `TURN_KEY_API_TOKEN`. These
+   apply immediately — no redeploy needed. Reload and the panel should report
+   `turn preflight OK — relay via …` (which transports appear depends on the network).
+3. Set `ALLOWED_ORIGINS` in `wrangler.toml` to the URL from step 1, then `yarn deploy` again.
+
+`ALLOWED_ORIGINS` deters casual cross-site use of the credential endpoint; it is **not**
+authentication, since `Origin` is trivially forged outside a browser. Anyone who finds an
+open endpoint can mint credentials that relay traffic billed to the account, so put a
+Cloudflare rate-limiting rule in front of `/api/ice` before this is public. Same-origin
+requests from the SPA send no `Origin` header, so the check never interferes with normal use.
+
+**Watching it.** Worker Logs are enabled in `wrangler.toml`, so a deployed session can be
+diagnosed from the dashboard or streamed while testing from a phone:
+
+```bash
+yarn wrangler tail
+```
+
+**Assets.** Workers cap a single asset at 25 MiB. `public/.assetsignore` excludes
+`public/media/`, which holds the large local-only screen videos; deployed builds serve the
+real content from remote hosting instead (see [Videos](#videos--adding-your-own)).
+
 ## How the sync works
 
 - **`beat`** (screen → all, ~4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
