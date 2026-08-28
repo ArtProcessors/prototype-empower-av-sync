@@ -27,12 +27,20 @@
  * showing up as drift.
  */
 
-/** Trystero matchmaking backend used to find peers in a room. */
-export type Strategy = 'nostr' | 'mqtt' | 'torrent'
+/**
+ * Matchmaking backend used to find peers in a room.
+ *
+ * `worker` is this app's own signalling relay, served by the Durable Object in
+ * `worker/signal-relay.ts`. It is the default because the public alternatives
+ * rate-limit — one Nostr relay answered "you are noting too much" mid-retry
+ * during testing — and they sit in the critical path of every join and every
+ * recovery. The others remain selectable for comparison.
+ */
+export type Strategy = 'worker' | 'nostr' | 'mqtt' | 'torrent'
 
 /** Matchmaking backend this build joins rooms with. */
 export const STRATEGY: Strategy =
-  (import.meta.env.VITE_TRYSTERO_STRATEGY as Strategy) || 'nostr'
+  (import.meta.env.VITE_TRYSTERO_STRATEGY as Strategy) || 'worker'
 
 /** Trystero namespace — peers only meet other peers using the same id. */
 export const APP_ID = 'empower-av-sync-v1'
@@ -86,23 +94,53 @@ export async function loadStrategy(): Promise<{
   joinRoom: typeof import('trystero/nostr').joinRoom
   /** This device's peer id, stable for the page's lifetime. */
   selfId: string
+  /**
+   * Live signalling sockets, keyed by relay URL. Exposed so the diagnostics
+   * can tell a throttled or unreachable relay apart from a room that simply
+   * has nobody in it — the two are indistinguishable from the peer log alone.
+   */
+  getRelaySockets: () => Record<string, WebSocket>
 }> {
   switch (STRATEGY) {
     case 'mqtt': {
       const mqtt = await import('@trystero-p2p/mqtt')
 
-      return { joinRoom: mqtt.joinRoom, selfId: mqtt.selfId }
+      return {
+        joinRoom: mqtt.joinRoom,
+        selfId: mqtt.selfId,
+        getRelaySockets: mqtt.getRelaySockets,
+      }
     }
     case 'torrent': {
       const torrent = await import('@trystero-p2p/torrent')
 
-      return { joinRoom: torrent.joinRoom, selfId: torrent.selfId }
+      return {
+        joinRoom: torrent.joinRoom,
+        selfId: torrent.selfId,
+        getRelaySockets: torrent.getRelaySockets,
+      }
     }
-    case 'nostr':
-    default: {
+    case 'nostr': {
       const nostr = await import('trystero/nostr')
 
-      return { joinRoom: nostr.joinRoom, selfId: nostr.selfId }
+      return {
+        joinRoom: nostr.joinRoom,
+        selfId: nostr.selfId,
+        getRelaySockets: nostr.getRelaySockets,
+      }
+    }
+    case 'worker':
+    default: {
+      const [worker, core] = await Promise.all([
+        import('./worker-strategy'),
+        import('@trystero-p2p/core'),
+      ])
+
+      return {
+        joinRoom: worker.joinRoom as typeof import('trystero/nostr').joinRoom,
+        selfId: core.selfId,
+        getRelaySockets: worker.getRelaySockets,
+      }
     }
   }
 }

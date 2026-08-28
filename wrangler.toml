@@ -25,6 +25,18 @@ binding = "ASSETS"
 # unmatched should still return index.html.
 not_found_handling = "single-page-application"
 
+# Signalling relay. A stateless Worker cannot hold WebSocket connections and
+# fan messages between peers — requests land in different isolates — so peer
+# discovery lives in a Durable Object.
+[[durable_objects.bindings]]
+name = "SIGNAL_RELAY"
+class_name = "SignalRelay"
+
+# SQLite-backed, which is what the Workers Free plan supports.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRelay"]
+
 [vars]
 # Credential lifetime. Long enough that a visitor session never straddles an
 # expiry; short enough that a leaked pair stops working the same day.

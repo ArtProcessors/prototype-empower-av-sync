@@ -12,6 +12,12 @@ const apiProxy = {
     target: 'http://127.0.0.1:8787',
     changeOrigin: true,
   },
+  // Peer signalling upgrades to a WebSocket, so this leg needs `ws: true`.
+  '/signal': {
+    target: 'ws://127.0.0.1:8787',
+    ws: true,
+    changeOrigin: true,
+  },
 }
 
 // Sibling of empower-peer-to-peer: Vite 7 + React + vite-plugin-pwa (injectManifest,

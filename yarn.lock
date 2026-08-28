@@ -2077,6 +2077,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@trystero-p2p/core@npm:~0.25.3":
+  version: 0.25.3
+  resolution: "@trystero-p2p/core@npm:0.25.3"
+  checksum: 10c0/ae87f471d7b488aecd53da3b1148fb0eb417b28669803c1e2bb90e04d504e4e1f20827299501f71260bd66ec645e9af651da897d0674e8f4c8f9dd2c08bdbeeb
+  languageName: node
+  linkType: hard
+
 "@trystero-p2p/mqtt@npm:~0.25.2":
   version: 0.25.2
   resolution: "@trystero-p2p/mqtt@npm:0.25.2"
@@ -2805,6 +2812,7 @@ __metadata:
   resolution: "empower-av-sync@workspace:."
   dependencies:
     "@cloudflare/workers-types": "npm:~5.20260826.1"
+    "@trystero-p2p/core": "npm:~0.25.3"
     "@trystero-p2p/mqtt": "npm:~0.25.2"
     "@trystero-p2p/torrent": "npm:~0.25.2"
     "@types/qrcode": "npm:~1.5.5"

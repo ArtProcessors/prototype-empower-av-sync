@@ -18,6 +18,7 @@
     "deploy": "yarn build && wrangler deploy"
   },
   "dependencies": {
+    "@trystero-p2p/core": "~0.25.3",
     "@trystero-p2p/mqtt": "~0.25.2",
     "@trystero-p2p/torrent": "~0.25.2",
     "mp4box": "~2.4.1",

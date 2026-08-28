@@ -258,9 +258,15 @@ screen's 127 MB video for the 15-minute clip.
 - **Buffer/stream rate nudges are not pitch-preserved.** `AudioBufferSourceNode.playbackRate`
   shifts pitch; the clamp is kept subtle (±2 %) so it's hard to hear, but it's a compromise
   the element engine doesn't make.
-- **Depends on public signaling infrastructure.** Default matchmaking rides free Nostr
-  relays — fine for a spike, not an SLA. (Strategy is swappable and only needed at join time,
-  but it's still a third party in the visitor's critical path — and now in the watchdog's.)
+- **Signalling is self-hosted, but it is now a component to run.** Peer discovery moved off
+  free Nostr relays — which rate-limit ("you are noting too much" mid-retry), go offline, and
+  sat in the critical path of every join _and_ every watchdog recovery — onto a Durable Object
+  on the app's own Worker ([signal-relay.ts](worker/signal-relay.ts)). Measured peering at
+  0.8 s versus 1.4–2.2 s over Nostr, with no relay warnings at all. The cost is that room
+  discovery now depends on a service this project operates: it uses WebSocket hibernation and
+  sits inside the Workers free tier at venue scale, but an outage there is an outage for
+  joining. The public strategies remain selectable via `VITE_TRYSTERO_STRATEGY` for
+  comparison.
 - **Room codes are the only access control.** The 4-character code doubles as the room
   password; anyone who can reach the signaling network and guess/see a code can join.
   Acceptable for listening to a public soundtrack, but worth being deliberate about.

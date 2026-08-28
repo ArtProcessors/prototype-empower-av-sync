@@ -18,7 +18,12 @@
  *
  * Serving the SPA from the same Worker keeps `/api/ice` same-origin, so there
  * is no CORS surface to get wrong in production.
+ *
+ * It also carries the signalling relay at {@link SIGNAL_PATH}, backed by a
+ * Durable Object (see `signal-relay.ts`) — replacing the public Nostr relays
+ * that rate-limited peer discovery.
  */
+export { SignalRelay } from './signal-relay'
 
 /** Bindings and secrets this Worker expects; see `wrangler.toml`. */
 export interface Env {
@@ -44,6 +49,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string
   /** Static assets binding — the built SPA in `dist/`. */
   ASSETS: { fetch: (request: Request) => Promise<Response> }
+  /** Durable Object namespace for the signalling relay. */
+  SIGNAL_RELAY: DurableObjectNamespace
 }
 
 /** Path the client fetches its ICE configuration from. */
@@ -57,6 +64,16 @@ const ICE_PATH = '/api/ice'
  * else in the log distinguishes them.
  */
 const PING_PATH = '/api/ping'
+
+/** WebSocket endpoint peers meet on; upgraded straight into the Durable Object. */
+const SIGNAL_PATH = '/signal'
+
+/**
+ * Durable Object instance name. One hub serves every room — Trystero namespaces
+ * its topics by app and room id already, so rooms stay isolated without a DO
+ * each. Sharding by room is a scale optimisation, not a correctness one.
+ */
+const SIGNAL_INSTANCE = 'default'
 
 /** Fallback credential lifetime when `TURN_TTL_SECONDS` is unset. */
 const DEFAULT_TTL_SECONDS = 7200
@@ -189,6 +206,12 @@ async function issueIceConfig(env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+
+    if (url.pathname === SIGNAL_PATH) {
+      const id = env.SIGNAL_RELAY.idFromName(SIGNAL_INSTANCE)
+
+      return env.SIGNAL_RELAY.get(id).fetch(request)
+    }
 
     if (url.pathname === PING_PATH) {
       return new Response(null, {

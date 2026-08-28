@@ -21,6 +21,7 @@ import {
   networkLooksUp,
   startReachabilityProbe,
 } from '../diagnostics/reachability'
+import { reportRelaySockets } from '../diagnostics/relay-sockets'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import { preflightTurn } from '../diagnostics/turn-preflight'
 import {
@@ -45,8 +46,14 @@ const BEAT_FRESH_MS = 3000 // ignore beats older than this when steering
 const WATCHDOG_MS = 1000 // how often the transport watchdog checks for beats
 const REJOIN_KEY = 'empower.rejoinRoom' // sessionStorage: room to re-offer after a reload
 const TRANSPORT_STALE_MS = 6000 // no beats for this long → the WebRTC link is presumed dead
-const RECONNECT_COOLDOWN_MS = 10000 // min gap between transport rejoin attempts (visible)
-const HIDDEN_RECONNECT_COOLDOWN_MS = 45000 // slower retries while asleep (Doze refuses most anyway)
+const RECONNECT_COOLDOWN_MS = 10000 // first gap between transport rejoin attempts (visible)
+const HIDDEN_RECONNECT_COOLDOWN_MS = 45000 // slower retries while asleep (the radio is usually off)
+// Each failed rejoin doubles the wait, up to these ceilings. A flat retry
+// hammers the public signalling relays — which rate-limit, and then cause the
+// very failure being retried against. Visible stays responsive because someone
+// is watching the screen; hidden can afford to be patient.
+const MAX_RECONNECT_COOLDOWN_MS = 60000
+const MAX_HIDDEN_RECONNECT_COOLDOWN_MS = 300000
 
 /**
  * The room a listener was in before a reload/tab-discard, if any — for a
@@ -188,6 +195,8 @@ export function useSync(): SyncApi {
   const roomRef = useRef<string | null>(null) // room we're in, for transport reconnects
   const reconnectingRef = useRef(false)
   const lastReconnectAtRef = useRef(0)
+  // Consecutive rejoins that never produced a peer; drives the backoff.
+  const rejoinFailuresRef = useRef(0)
 
   // Page-lifecycle, network and renderer-liveness logging runs for the whole
   // page, not just while a session is up — a freeze or a discard is exactly
@@ -285,7 +294,15 @@ export function useSync(): SyncApi {
     lastReconnectAtRef.current = Date.now()
 
     const startedAt = Date.now()
-    recordDiagnostic('transport', `rejoining room ${code}…`)
+
+    rejoinFailuresRef.current += 1
+    recordDiagnostic(
+      'transport',
+      `rejoining room ${code}… (attempt ${rejoinFailuresRef.current})`,
+    )
+    // Captured at the moment things are going wrong, which is the only time
+    // relay health is worth knowing.
+    reportRelaySockets('rejoin')
 
     try {
       // Leave first — rejoining the same room while the dead session lingers
@@ -354,10 +371,23 @@ export function useSync(): SyncApi {
         return
       }
 
-      const cooldown = hidden
+      const syncState = controller.getState()
+
+      // Beats flowing again means the last rejoin worked; start the backoff
+      // over so the next outage gets a prompt retry rather than a stale delay.
+      if (syncState.screenOnline) {
+        rejoinFailuresRef.current = 0
+      }
+
+      const base = hidden
         ? HIDDEN_RECONNECT_COOLDOWN_MS
         : RECONNECT_COOLDOWN_MS
-      const syncState = controller.getState()
+      const ceiling = hidden
+        ? MAX_HIDDEN_RECONNECT_COOLDOWN_MS
+        : MAX_RECONNECT_COOLDOWN_MS
+      // Zero failures gives the plain base interval, which doubles as the grace
+      // period a fresh join gets; each failure after that doubles the wait.
+      const cooldown = Math.min(base * 2 ** rejoinFailuresRef.current, ceiling)
       const stale =
         syncState.lastBeatAt > 0 &&
         Date.now() - syncState.lastBeatAt > TRANSPORT_STALE_MS
