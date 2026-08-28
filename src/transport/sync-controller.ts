@@ -33,6 +33,7 @@ const CLOCK_WINDOW = 8 // rolling clock-sample window
 const FIRST_CLOCK_SAMPLE_MS = 800 // first sample, once beats should have landed
 const SCREEN_STALE_MS = 3000 // no beat for this long → screen considered offline
 const RESYNC_GAP_MS = 4000 // beat gap longer than this ⇒ treat as reconnect / wake
+const SIGNALLING_CHECK_MS = 2000 // how often signalling health is re-read
 
 /** Everything the UI and the media layer need to know about the session. */
 export interface SyncState {
@@ -60,6 +61,13 @@ export interface SyncState {
   clockReady: boolean
   /** Bumps on reconnect / resume — followers should resync their audio. */
   syncEpoch: number
+  /**
+   * Whether a relay socket is open, i.e. whether peers can still find this
+   * room. Existing peer connections are unaffected when this goes false, which
+   * is exactly why it is worth showing: a screen with no signalling keeps
+   * playing to the listeners it has and silently accepts no new ones.
+   */
+  signallingOnline: boolean
 }
 
 /** Notified after every state change; read the new state via `getState()`. */
@@ -111,10 +119,9 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
   // Fetched per join, and therefore per *rejoin* too: a credential that expired
   // during a sleep would otherwise let the watchdog reconnect forever against
   // an ICE config that can no longer allocate a relay candidate.
-  const [{ joinRoom, selfId }, rtcConfig] = await Promise.all([
-    loadStrategy(),
-    getRtcConfig(),
-  ])
+  const [{ joinRoom, selfId, getRelaySockets }, rtcConfig] = await Promise.all(
+    [loadStrategy(), getRtcConfig()],
+  )
 
   recordDiagnostic('ice', `joining as ${role} — ${describeIceConfig()}`)
 
@@ -151,6 +158,8 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
     screenOnline: role === 'screen',
     clockReady: role === 'screen',
     syncEpoch: 0,
+    // True by definition: the room was only reached through an open socket.
+    signallingOnline: true,
   }
 
   const listeners = new Set<Listener>()
@@ -325,6 +334,27 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
       setTimeout(sampleClock, FIRST_CLOCK_SAMPLE_MS) as unknown as number,
     )
   }
+
+  // Signalling health, polled rather than pushed: `getRelaySockets` is the one
+  // window every strategy offers onto its relays, so reading it here keeps this
+  // working whichever backend the build selects.
+  timers.push(
+    setInterval(() => {
+      const online = Object.values(getRelaySockets()).some(
+        socket => socket.readyState === WebSocket.OPEN,
+      )
+
+      if (online !== state.signallingOnline) {
+        recordDiagnostic(
+          'net',
+          online
+            ? 'signalling online'
+            : 'signalling OFFLINE — no relay socket',
+        )
+        set({ signallingOnline: online })
+      }
+    }, SIGNALLING_CHECK_MS) as unknown as number,
+  )
 
   refreshPeers()
 

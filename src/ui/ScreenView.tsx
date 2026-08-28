@@ -39,6 +39,12 @@ export function ScreenView({ api }: { api: SyncApi }) {
           <p>
             Listeners: <b>{syncState.peerCount}</b>
           </p>
+          {!syncState.signallingOnline && (
+            <p className="connecting">
+              ⚠️ Signalling is down — reconnecting. Listeners already connected
+              are unaffected, but nobody new can join until this clears.
+            </p>
+          )}
         </div>
       </div>
 

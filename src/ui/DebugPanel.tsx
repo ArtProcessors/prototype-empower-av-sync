@@ -39,6 +39,10 @@ export function DebugPanel({ api }: { api: SyncApi }) {
         value={<code>{syncState.selfId.slice(0, 6)}</code>}
       />
       <DebugRow label="peers" value={String(syncState.peerCount)} />
+      <DebugRow
+        label="signalling"
+        value={syncState.signallingOnline ? '🟢 online' : '🔴 reconnecting'}
+      />
       <DebugRow label="media" value={<code>{mediaId}</code>} />
 
       {syncState.role === 'follower' && (
