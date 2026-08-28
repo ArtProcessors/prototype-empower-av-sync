@@ -123,6 +123,14 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
       appId: APP_ID,
       password: roomCode,
       rtcConfig,
+      // Followers join passive, which makes the star real. Trystero otherwise
+      // meshes a room — every peer dials every other — and nothing here is
+      // ever sent follower to follower, so those connections are pure cost: at
+      // 30 phones, 435 of the 465 connections carry nothing, while each phone
+      // holds 30 peer connections and their TURN allocations instead of one.
+      // Passive peers refuse each other and dial only an active peer, so a
+      // follower connects to the screen and to nothing else.
+      passive: role === 'follower',
       ...(STRATEGY === 'nostr' && RELAY_URLS.length
         ? { relayConfig: { urls: RELAY_URLS } }
         : {}),

@@ -12,10 +12,26 @@
  * another peer's subscription. A Durable Object is that single coordination
  * point.
  *
- * The protocol is the one Trystero's `createTopicStrategy` documents:
+ * The protocol is the one Trystero's `createTopicStrategy` documents, plus
+ * announce retention (see below):
  *
  *   client → {type: "subscribe" | "unsubscribe" | "publish", topic, payload}
+ *   client → {type: "publish", topic, payload, retain: true}   an announce
+ *   client → {type: "unpublish", topic}                        drop an announce
  *   server → {topic, payload}   to every *other* subscriber of that topic
+ *
+ * **Announce retention** is the one thing this relay does that a plain pub/sub
+ * hub would not, and it is what makes a star topology affordable. Trystero's
+ * `passive` peers do not announce until they have heard an active peer, so a
+ * follower joining a pure fan-out relay waits for the screen's next announce —
+ * up to 5.3 s, on the join and rejoin paths that matter most. Retaining each
+ * socket's last announce per topic and replaying it to whoever subscribes next
+ * removes that wait: a follower hears the screen the instant it subscribes.
+ *
+ * Only announces are retained, and only the most recent per socket. They are
+ * presence beacons (`{peerId}` — the encrypted offer/answer traffic goes to
+ * peer-specific topics), so a stale one costs at most one dial at a peer that
+ * has gone, and it is dropped the moment its socket closes.
  *
  * One instance serves every room: Trystero already namespaces topics by
  * app and room id, so rooms cannot see each other's traffic. Sharding by room
@@ -30,6 +46,12 @@ interface ClientMessage {
   topic?: unknown
   /** Opaque signalling payload; only `publish` carries one. */
   payload?: unknown
+  /**
+   * Whether this publish is an announce, and so should be kept and replayed to
+   * later subscribers. The client sets it from Trystero's own publish context
+   * (`kind: 'announce'`), which keeps the payload opaque to this relay.
+   */
+  retain?: unknown
 }
 
 /**
@@ -40,20 +62,47 @@ interface ClientMessage {
 interface SocketState {
   /** Topics this socket currently subscribes to. */
   topics: string[]
+  /**
+   * The most recent announce this socket published, per topic, replayed to
+   * whoever subscribes to that topic next. Kept on the socket rather than in
+   * the object so it survives hibernation — and so it disappears with the
+   * connection, which is all the cleanup a departed peer needs.
+   */
+  announces: Record<string, unknown>
 }
 
 /** Cap on topics per connection, so a bad client cannot grow state forever. */
 const MAX_TOPICS_PER_SOCKET = 64
 
+/**
+ * Cap on retained announces per connection. A socket serves one room and so
+ * announces on one topic; the headroom is for a client that rejoins without
+ * dropping its socket, and the cap keeps the attachment well inside its size
+ * limit.
+ */
+const MAX_ANNOUNCES_PER_SOCKET = 4
+
+/** Cap on announces replayed into a single subscribe, bounding the fan-out. */
+const MAX_REPLAYED_ANNOUNCES = 64
+
+/** A socket with nothing recorded against it yet. */
+function emptyState(): SocketState {
+  return { topics: [], announces: {} }
+}
+
 function readState(socket: WebSocket): SocketState {
   try {
     const attachment = socket.deserializeAttachment() as SocketState | null
 
-    return attachment && Array.isArray(attachment.topics)
-      ? attachment
-      : { topics: [] }
+    if (!attachment || !Array.isArray(attachment.topics)) {
+      return emptyState()
+    }
+
+    // `announces` post-dates the first version of this state, so a socket that
+    // connected before a deploy can be missing it.
+    return attachment.announces ? attachment : { ...attachment, announces: {} }
   } catch {
-    return { topics: [] }
+    return emptyState()
   }
 }
 
@@ -81,7 +130,7 @@ export class SignalRelay implements DurableObject {
     // nothing while it waits, which matters when every listener holds one open
     // for the length of a session.
     this.state.acceptWebSocket(server)
-    writeState(server, { topics: [] })
+    writeState(server, emptyState())
 
     return new Response(null, { status: 101, webSocket: client })
   }
@@ -115,8 +164,10 @@ export class SignalRelay implements DurableObject {
         !state.topics.includes(topic) &&
         state.topics.length < MAX_TOPICS_PER_SOCKET
       ) {
-        writeState(socket, { topics: [...state.topics, topic] })
+        writeState(socket, { ...state, topics: [...state.topics, topic] })
       }
+
+      this.replayAnnounces(socket, topic)
 
       return
     }
@@ -125,14 +176,90 @@ export class SignalRelay implements DurableObject {
       const state = readState(socket)
 
       writeState(socket, {
+        ...state,
         topics: state.topics.filter(existing => existing !== topic),
       })
 
       return
     }
 
+    // A passive peer that has gone dormant withdraws its announce, so nobody
+    // subscribing later is told to dial a peer that has stopped listening.
+    if (message.type === 'unpublish') {
+      const state = readState(socket)
+
+      if (topic in state.announces) {
+        const announces = { ...state.announces }
+
+        delete announces[topic]
+        writeState(socket, { ...state, announces })
+      }
+
+      return
+    }
+
     if (message.type === 'publish') {
+      if (message.retain === true) {
+        this.retainAnnounce(socket, topic, message.payload)
+      }
+
       this.broadcast(socket, topic, message.payload)
+    }
+  }
+
+  /**
+   * Keep `payload` as this socket's announce on `topic`, replacing whatever it
+   * announced there before — only the latest is of any use.
+   */
+  private retainAnnounce(
+    socket: WebSocket,
+    topic: string,
+    payload: unknown,
+  ): void {
+    const state = readState(socket)
+
+    if (
+      !(topic in state.announces) &&
+      Object.keys(state.announces).length >= MAX_ANNOUNCES_PER_SOCKET
+    ) {
+      return
+    }
+
+    writeState(socket, {
+      ...state,
+      announces: { ...state.announces, [topic]: payload },
+    })
+  }
+
+  /**
+   * Send `subscriber` every other socket's retained announce for `topic`, so a
+   * peer joining an established room learns who is already there without
+   * waiting for the next announce to come round.
+   */
+  private replayAnnounces(subscriber: WebSocket, topic: string): void {
+    let sent = 0
+
+    for (const socket of this.state.getWebSockets()) {
+      if (sent >= MAX_REPLAYED_ANNOUNCES) {
+        break
+      }
+
+      if (socket === subscriber) {
+        continue
+      }
+
+      const announce = readState(socket).announces[topic]
+
+      if (announce === undefined) {
+        continue
+      }
+
+      try {
+        subscriber.send(JSON.stringify({ topic, payload: announce }))
+        sent += 1
+      } catch {
+        /* the subscriber going away mid-replay is not this loop's problem */
+      }
     }
   }
 

@@ -11,6 +11,13 @@
  * `createTopicStrategy` is Trystero's own helper for a pub/sub relay: it owns
  * the room lifecycle (announce scheduling, passive mode, peer-specific topics)
  * and asks this adapter only to move opaque messages between named topics.
+ *
+ * The one thing this adapter adds is a `retain` flag on announces, which the
+ * relay uses to replay them to later subscribers. Followers join `passive`
+ * (see `sync-controller.ts`) and so stay dormant until they hear the screen;
+ * without retention that means waiting out the screen's announce interval on
+ * every join and every rejoin. Trystero tells us which publishes are announces
+ * via the publish context, so the payload itself stays opaque to us.
  */
 import { createTopicStrategy, toJson } from '@trystero-p2p/core'
 
@@ -120,8 +127,24 @@ export const joinRoom = createTopicStrategy<WebSocket>({
     }
   },
 
-  publishTopic: (socket, topic, payload) => {
-    socket.send(toJson({ type: 'publish', topic, payload }))
+  publishTopic: (socket, topic, payload, context) => {
+    socket.send(
+      toJson({
+        type: 'publish',
+        topic,
+        payload,
+        ...(context.kind === 'announce' ? { retain: true } : {}),
+      }),
+    )
+  },
+
+  // Called when a passive peer goes dormant. The relay drops the retained
+  // announce so the next subscriber is not handed a peer that has stopped
+  // listening; a peer that leaves outright is covered by its socket closing.
+  unpublishTopic: (socket, topic) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(toJson({ type: 'unpublish', topic }))
+    }
   },
 })
 
