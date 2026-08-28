@@ -1,8 +1,9 @@
 # Feasibility Report — Empower A/V Sync
 
 **Spike:** shared screen + personal headphone audio ("silent cinema") on visitor-owned phones
-**Repo:** `empower-av-sync` (branch `av-long-form-exploration`) · **Date:** 5 August 2026
-**Status:** working prototype — long-form content and screen-lock playback now implemented
+**Repo:** `empower-av-sync` (branch `productise-code`) · **Date:** 28 August 2026
+**Status:** working prototype — long-form content, screen-lock playback, and a self-hosted
+signalling + TURN-credential Worker now implemented
 
 ---
 
@@ -15,7 +16,10 @@ headphones, **tightly enough locked that the audio audibly belongs to the pictur
 1. **No media over the wire.** Video and audio live on each device (PWA-cached or fetched
    from static hosting); the network carries only tiny sync beats.
 2. **No infrastructure to run.** Serverless WebRTC (Trystero) — no sync server, no media
-   server, no backend deploy.
+   server, no backend deploy. _This is the one goal the spike gave ground on:_ it now
+   deploys a single Cloudflare Worker that mints TURN credentials and carries peer
+   signalling. Still no sync server and no media server — see "Signalling is self-hosted"
+   under Cons for why the trade was made.
 3. **BYOD with zero calibration.** Visitors' own phones and headphones (including Bluetooth),
    no per-device latency setup step.
 4. **Both major mobile platforms.** iOS Safari and Android Chrome, despite their very
@@ -36,8 +40,17 @@ The screen is a **fixed leader**; phones are followers in a star topology. Roles
 migrate. All logic is client-side in a PWA (Vite + React + TypeScript).
 
 **Transport** ([sync-controller.ts](src/transport/sync-controller.ts)) — peers meet through
-Trystero (WebRTC data channels; Nostr public relays for signaling by default, MQTT/torrent
-strategies swappable). The wire protocol is two messages:
+Trystero (WebRTC data channels), but over this app's **own signalling relay**: a Durable
+Object on the same Worker that serves the SPA ([signal-relay.ts](worker/signal-relay.ts), a
+WebSocket pub/sub hub at `/signal`). The public strategies (`nostr`, `mqtt`, `torrent`)
+remain selectable via `VITE_TRYSTERO_STRATEGY` for comparison. Followers join `passive`, so
+they dial the screen and never each other — Trystero otherwise meshes a room, and nothing
+here is ever sent follower to follower. Owning the relay is what makes that affordable: it
+retains each peer's last announce and replays it to whoever subscribes next, so a passive
+follower activates the instant it connects rather than waiting out the screen's 5.3 s
+announce interval. ICE is pinned to **Cloudflare TURN, relay-only** (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers
+replaced), with credentials minted per client from `/api/ice` — so every beat below travels
+screen → Cloudflare → phone, even on the same Wi-Fi. The wire protocol is two messages:
 
 - **`beat`** (screen → all, 4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
   where the looping video is and the screen's wall-clock at that instant. `mediaId` tells
@@ -147,7 +160,9 @@ re-routed, rather than being folded into an EMA that could only crawl.
     seconds of screen-off. The relay is not the weak link.
   - **No application-layer transport fixes this.** A WebSocket to a self-hosted relay — the
     obvious next move, and one this spike came close to building — would fail exactly as hard
-    as a peer connection does. If a bare `fetch` cannot complete, nothing can.
+    as a peer connection does. If a bare `fetch` cannot complete, nothing can. (The relay
+    since built is for _signalling_, and was built to fix slow and rate-limited peer
+    discovery — not this. It goes down with the radio like everything else.)
   - **Trystero's 5 s teardown stops mattering.** It closes a peer 5 s after ICE reports
     `disconnected` where the spec would wait ~30 s for `failed`, which is genuinely too
     aggressive for a phone — but the network here stays down for _minutes_, so patching it
@@ -200,8 +215,10 @@ screen's 127 MB video for the 15-minute clip.
   keep-alive tap works. Audio continues throughout, and on wake peering recovers within
   seconds without the user doing anything. What does _not_ survive is the network (see
   "Screen-off kills the radio").
-- **Zero backend.** No sync server, no media server, nothing to host or scale for playback
-  itself. Signaling uses public relays; media ships with the PWA or off static hosting.
+- **Almost no backend.** No sync server, no media server, nothing in the playback path to
+  host or scale: one small Cloudflare Worker mints TURN credentials and carries peer
+  discovery, and media ships with the PWA or off static hosting. The Worker is needed to
+  _join_ a room, not to keep one running.
 - **Negligible sync bandwidth.** ~4 small JSON beats/sec plus a clock ping every 3 s per
   follower. Media never crosses the WebRTC wire.
 - **No calibration step.** Output latency (wired, speaker, Bluetooth) is measured and
@@ -265,7 +282,8 @@ screen's 127 MB video for the 15-minute clip.
   0.8 s versus 1.4–2.2 s over Nostr, with no relay warnings at all. The cost is that room
   discovery now depends on a service this project operates: it uses WebSocket hibernation and
   sits inside the Workers free tier at venue scale, but an outage there is an outage for
-  joining. The public strategies remain selectable via `VITE_TRYSTERO_STRATEGY` for
+  joining — survivable rather than fatal, since the connection reconnects and re-announces on
+  its own and playback never depended on it, but new listeners cannot arrive while it lasts. The public strategies remain selectable via `VITE_TRYSTERO_STRATEGY` for
   comparison.
 - **Room codes are the only access control.** The 4-character code doubles as the room
   password; anyone who can reach the signaling network and guess/see a code can join.
@@ -276,8 +294,13 @@ screen's 127 MB video for the 15-minute clip.
 Scope boundaries of the current design (as opposed to defects):
 
 - **Fixed leader, no migration.** If the screen device dies, the experience stops until it
-  returns; followers show "screen offline". No gossip relay — every follower needs a direct
-  (or TURN) connection to the screen.
+  returns; followers show "screen offline". No gossip relay — every follower needs its own
+  relayed connection to the screen (relay-only ICE means there is no direct path even on the
+  same LAN).
+- **The star is enforced, not assumed.** Trystero meshes a room by default, which would put
+  ~N²/2 relayed connections on a gallery floor to carry nothing: only the screen sends beats.
+  Followers therefore join `passive` — passive peers connect only to an active peer, never to
+  each other. Verified with one screen and two followers: one peer each, two on the screen.
 - **Looping-video model only.** The sync target is a single continuously looping video.
   Playlists, seek-by-operator, multiple simultaneous zones, or paused-by-default content
   would need protocol extensions (the `paused` beat state exists but is untested as a mode).
@@ -331,7 +354,10 @@ Scope boundaries of the current design (as opposed to defects):
 - **Fan-out scale.** Largest real test is a handful of peers. A gallery scenario means tens
   of followers per screen: WebRTC connection limits on the screen device, beat send cost at
   N connections, and clk-RPC load are all unmeasured — plus N followers each pulling ~20 KB/s
-  of window bytes from the CDN.
+  of window bytes from the CDN. The mesh that would have made this far worse — 30 phones as
+  ~465 relayed connections rather than 30 — is closed off by `passive` followers, but the
+  screen still terminates one relayed connection per listener and that is what a scale test
+  has to find the ceiling of.
 - **Long-session stability.** Multi-hour soak: clock-ratio estimator behaviour over many
   sleep cycles, memory over hundreds of window slides, thermal/battery impact of a 15 Hz
   corrector + wake lock + continuous fetch/decode on phones. The "dropout after a few
@@ -346,9 +372,10 @@ Scope boundaries of the current design (as opposed to defects):
   visitors leave it on, and what happens on devices that ignore or drop the lock. Also untested
   across Chrome builds: whether the 0.005 tap gain clears the silence threshold everywhere, and
   whether it is audible on any device with the volume up.
-- **Hostile venue networks.** Client-isolated Wi-Fi, symmetric NAT, captive portals — i.e.
-  whether TURN is a nice-to-have or a requirement, and its cost. Range-fetch behaviour behind
-  a caching proxy is also unknown.
+- **Hostile venue networks.** Client-isolated Wi-Fi, symmetric NAT, captive portals. TURN is
+  no longer a nice-to-have — the build forces every connection through it — so the open
+  questions are its cost at venue scale, whether ports 53/80/443 get through the venue's
+  filtering, and Range-fetch behaviour behind a caching proxy.
 - **Device breadth.** Android fragmentation, older iPhones, iOS < 16.4 (where the
   long-content fallback is the memory trap above), Bluetooth codecs with extreme latency
   (some exceed the 0.5 s measurement clamp).
@@ -356,13 +383,24 @@ Scope boundaries of the current design (as opposed to defects):
   synced" test with naive users, various headphones, at gallery viewing distances hasn't been
   done — nor has anyone judged whether the loop-wrap dropout and wake hand-over are acceptable
   to a visitor.
-- **Signaling reliability at event scale** and behaviour when relays are slow/down mid-session
-  (in-session sync survives; join and watchdog rejoin do not).
+- **Signalling reliability at event scale.** The Durable Object has been exercised by a
+  handful of peers, not a room full: hibernation behaviour under continuous churn and Workers
+  free-tier limits are unmeasured. A relay outage mid-session is no longer open, though: the
+  connection reconnects underneath Trystero and replays the room's subscriptions and its
+  announce, which was the gap that made a Worker redeploy leave the screen permanently
+  undiscoverable while it still looked healthy. Measured by killing the Worker with a session
+  live — drop detected in ~1 s, recovery on the Worker's return, the next listener peering in
+  under a second, and no peer connection disturbed at any point. What is still unmeasured is
+  the same event with a room full of phones behind it, where every device reconnects at once
+  (hence the jitter on the backoff).
+- **TURN cost and capacity.** Every follower's beats and clock RPCs are relayed for the whole
+  session, and credentials are minted per join. Neither the egress bill nor Cloudflare's
+  per-account limits have been checked against a gallery day.
 
 ## Recommendations
 
 1. **Call the core question answered, plus the two follow-ons.** iOS-viable,
-   calibration-free, sub-perceptual sync over serverless WebRTC is retired as a risk; so are
+   calibration-free, sub-perceptual sync over peer-to-peer WebRTC is retired as a risk; so are
    the two this iteration set out to close — long-form content without unbounded memory, and
    playback that survives a phone going to sleep. Both now have working implementations rather
    than plans.
@@ -384,8 +422,10 @@ Scope boundaries of the current design (as opposed to defects):
    starve playback.
 5. **Close the WebCodecs gap explicitly.** Detect absence and refuse (or cap) long content on
    that device, rather than silently routing to a whole-file decode that will be killed.
-6. **For production, replace the free-relay dependency:** host a TURN server and either
-   self-host signaling (Nostr relay/MQTT broker) or pin to paid relays. Budget this plus
+6. **The free-relay dependency is gone — now budget the paid one.** Signalling is self-hosted
+   (Durable Object) and relaying goes through Cloudflare TURN on the project's own key. What
+   remains is operational: rate-limit `/api/ice` before it is public (an open endpoint mints
+   credentials billed to the account), set `ALLOWED_ORIGINS`, and price TURN egress plus
    content hosting as the real infrastructure cost.
 7. **Design for venue Wi-Fi early.** Get on the actual network (or its spec) and confirm
    P2P/TURN reachability _and_ Range-fetch behaviour before UX work builds on instant joins.
@@ -407,9 +447,10 @@ measured memory as the two named unknowns.**
 
 The spike demonstrates end-to-end, on real devices including iOS Safari, that a shared
 screen and personal phone audio can hold sync within single-digit milliseconds of measured
-drift — under the ±80 ms perceptual bar with an order of magnitude to spare — using no
-backend, no media streaming over the wire, and no user calibration. It now also handles the
-two things that would have disqualified it in a gallery: **45-minute content at flat memory
+drift — under the ±80 ms perceptual bar with an order of magnitude to spare — with no media
+streaming over the wire, no user calibration, and a backend that is one Worker for joining a
+room rather than anything in the playback path. It now also handles the two things that would
+have disqualified it in a gallery: **45-minute content at flat memory
 cost**, via windowed WebCodecs decode, and **playback that continues through screen lock**,
 via audio-thread scheduling and clock-ratio free-run, keeping its page alive and re-establishing
 its own connection without the visitor touching anything. The engine split is the right

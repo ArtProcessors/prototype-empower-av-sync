@@ -7,41 +7,46 @@ only tiny sync beats — never audio/video. Short content is device-local (PWA-c
 content streams its audio from static hosting, window by window.
 
 Sibling of `empower-peer-to-peer` (reuses its Trystero transport + PWA/offline patterns),
-but with a purpose-built continuous sync engine instead of the gallery's event model.
+but with a purpose-built continuous sync engine instead of the gallery's event model — and
+with peer signalling and TURN credentials served by the app's own Cloudflare Worker rather
+than by public relays.
 
 **Stack:** Vite 7 · React 18 · TypeScript · `vite-plugin-pwa` (offline) · `trystero`
-(serverless WebRTC) · `mp4box` + WebCodecs (windowed audio decode) · Yarn 4 · Node 24.13.0.
+(WebRTC data channels) · Cloudflare Worker + Durable Object (signalling, TURN credentials,
+static hosting) · `mp4box` + WebCodecs (windowed audio decode) · Yarn 4 · Node 24.13.0.
 
 ## Run
 
-**Two processes, always.** Every connection is relayed through Cloudflare TURN, so the app
-cannot join a room without the Worker that mints its credentials. Run both in separate
-terminals and open **Vite's** URL, not Wrangler's:
+**Two processes, always.** The Worker carries both halves of joining a room — peer
+signalling (`/signal`) and the TURN credentials every connection is relayed through
+(`/api/ice`) — so without it the app cannot find a peer or connect to one. Run both in
+separate terminals and open **Vite's** URL, not Wrangler's:
 
 ```bash
 nvm use && corepack enable
 yarn install
 
-yarn worker:dev   # :8787 — serves /api/ice
+yarn worker:dev   # :8787 — /signal, /api/ice, /api/ping
 yarn dev          # :3100 — open this one
 ```
 
-Vite proxies `/api` to the Worker, so the credential fetch is same-origin locally just as it
-is in production. Put the TURN key in `.dev.vars` first (see `.env.example`); no Cloudflare
-login is needed for local work.
+Vite proxies `/api` and `/signal` (the latter with `ws: true`, since signalling upgrades to a
+WebSocket) to the Worker, so both are same-origin locally just as they are in production. Put
+the TURN key in `.dev.vars` first (see `.env.example`); no Cloudflare login is needed for
+local work.
 
 | Command           | What it does                                                              |
 | ----------------- | ------------------------------------------------------------------------- |
 | `yarn dev`        | Dev server on :3100 (HMR, no service worker) — **open this one**          |
-| `yarn worker:dev` | TURN-credential Worker on :8787 (`/api/ice`), proxied from Vite           |
+| `yarn worker:dev` | Signalling + TURN-credential Worker on :8787, proxied from Vite           |
 | `yarn build`      | Type-check app + Worker, production build (builds the SW)                 |
 | `yarn preview`    | Prod build on :4273 (SW active — offline testing; still needs the Worker) |
 | `yarn deploy`     | Build, then deploy the Worker + SPA to Cloudflare                         |
 | `yarn sim`        | Unit checks for the sync math (`test/sync-sim.ts`)                        |
 
-To rehearse exactly what deploys — **one origin** serving both the app and `/api/ice`, service
-worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is the only
-local mode with production's topology.
+To rehearse exactly what deploys — **one origin** serving the app, `/signal` and `/api/ice`,
+service worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is
+the only local mode with production's topology.
 
 ## Try it
 
@@ -59,9 +64,11 @@ or `syncing` while a long soundtrack's first window loads).
 
 ## Deploy
 
-One Cloudflare Worker serves both the built SPA and `/api/ice`, so the TURN-credential
-fetch is same-origin in production and there is no CORS surface. `yarn deploy` runs
-`yarn build` first, so the `dist/` it uploads is always current.
+One Cloudflare Worker serves the built SPA, `/api/ice` and the `/signal` WebSocket, so both
+the TURN-credential fetch and peer signalling are same-origin in production and there is no
+CORS surface. `yarn deploy` runs `yarn build` first, so the `dist/` it uploads is always
+current, and the `SignalRelay` Durable Object migration in `wrangler.toml` applies on the
+first deploy.
 
 **Authenticating.** `wrangler login` works but grants a broad OAuth scope set
 (`workers:write`, `workers_kv:write`, `d1:write`, `pages:write`, `zone:read`, …). Prefer a
@@ -145,6 +152,41 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
 `src/media/audio-sync-controller.ts`, with the two AudioContext engines in
 `src/media/buffer-audio-engine.ts` and `src/media/streaming-buffer-engine.ts`.
 
+## Diagnostics
+
+Both roles render a **Debug — connection log** below the main UI
+([DiagnosticsPanel.tsx](src/ui/DiagnosticsPanel.tsx)) — the instrument the connection-stability
+work was done with. It carries a summary line (freezes · peer leaves · rejoins · longest timer
+stall) and a one-tap **Copy log**, and the buffer is mirrored to `sessionStorage` so a log
+survives the browser discarding the tab. Events are tagged `beat`, `ice`, `net`, `page`,
+`peer`, `timer` or `transport`.
+
+The lines worth knowing:
+
+- **`turn preflight OK — relay via …`** — credentials minted and a relay candidate actually
+  allocated, checked at startup before anyone joins
+  ([turn-preflight.ts](src/diagnostics/turn-preflight.ts)).
+- **`ab12cd path relay→relay over tls (wifi)`** — the _selected_ candidate pair once a peer
+  connects. The transport comes from Chromium's `relayProtocol`, not `protocol`: the latter
+  always reads `udp` on a relay candidate, describing the relay's far leg rather than the link
+  this phone is holding. A pair that is not `relay→relay` is logged **`— NOT RELAYED`**, which
+  means the ICE pinning has been defeated and the session is no longer testing the service.
+- **`probe OK (142ms) — network usable`** — the `/api/ping` reachability probe that gates
+  rejoin attempts while the page is hidden ([reachability.ts](src/diagnostics/reachability.ts)).
+  Without that gate a five-minute sleep burned seven room rebuilds against a radio that was off.
+- **`relays (rejoin): none connected`** — signalling socket health, which is what separates a
+  throttled or dead relay from a room that is simply empty
+  ([relay-sockets.ts](src/diagnostics/relay-sockets.ts)).
+- **`signalling relay dropped — reconnecting`** / **`signalling relay reconnected — 2 topics
+restored`** — the relay socket died and came back, with the room's subscriptions and
+  announce replayed onto the new socket. The screen also shows a banner while this is
+  outstanding, since its listener count no longer reflects whether anyone can still join.
+- **`FROZEN by the browser`** and **`gap 41.2s`** — Chrome froze the page, or the 1 Hz liveness
+  timer stalled. The two symptoms of Android power-save killing a session.
+
+The separate audio debug panel above it shows the live `engine`, `audio out` and
+`latency comp` rows.
+
 ## Verification
 
 - **`yarn sim`** — offset/target/drift/rate math incl. the loop seam. All pass. (The streaming
@@ -157,8 +199,9 @@ Pure, tested logic is in `src/sync/sync-math.ts`; transport in
   **`test` clip** play from cache (precache includes `screen.mp4` + `soundtrack.m4a`). The
   long options are **not** offline: their audio is range-fetched throughout playback.
 - **Two-device (manual):** laptop = screen, phone (headphones) = follower — clicks line up
-  with flashes; drift stays small on WiFi and cellular. Every connection is relayed through
-  Cloudflare TURN, so the Worker must be running (`yarn worker:dev`) or joining fails outright.
+  with flashes; drift stays small on WiFi and cellular. Peers meet over the Worker's `/signal`
+  relay and every connection is relayed through Cloudflare TURN, so the Worker must be running
+  (`yarn worker:dev`) or joining fails outright — at discovery or at connection, respectively.
 - **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing and the
   page stays alive (keep-alive tap), but the **network does not**: Android powers its Wi-Fi down
   at screen-off, so the link dies within ~10 s and only returns when the screen does. Hold the
@@ -263,16 +306,36 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   unbounded decode the streaming engine exists to avoid. Known gap; see FEASIBILITY.md.
 - The follower's soundtrack is a **stream-copy of the video's own AAC**, so their timelines
   are bit-identical (no encoder-delay offset).
-- Fixed leader (no migration); star topology (no gossip relay). **Peer signalling is the app's
-  own Durable Object** ([signal-relay.ts](worker/signal-relay.ts)) at `/signal`, served by the
-  same Worker as the SPA and `/api/ice` — a stateless Worker cannot hold the WebSockets, hence
-  the DO. It replaced free Nostr relays, which rate-limited peer discovery and sat in the path
-  of every join and every reconnect; peering measured 0.8 s against their 1.4–2.2 s. The
+- Fixed leader (no migration); star topology, in the transport as well as the protocol.
+  Trystero meshes a room by default — every peer dials every other — which for this app is
+  pure cost, since nothing is ever sent follower to follower: at 30 phones, 435 of the 465
+  connections would carry nothing while each phone held 30 relayed connections instead of
+  one. **Followers therefore join `passive`**, which makes them refuse each other and dial
+  only the screen. Verified with one screen and two followers: each follower reports one
+  peer, the screen reports two.
+- **Peer signalling is the app's own Durable Object**
+  ([signal-relay.ts](worker/signal-relay.ts)) at `/signal`, served by the same Worker as the
+  SPA and `/api/ice` — a stateless Worker cannot hold the WebSockets, hence the DO. It
+  replaced free Nostr relays, which rate-limited peer discovery and sat in the path of every
+  join and every reconnect; peering measured 0.8 s against their 1.4–2.2 s. The
   public strategies are still selectable with `VITE_TRYSTERO_STRATEGY` (`nostr`, `mqtt`,
   `torrent`) for comparison. ICE is **pinned to Cloudflare TURN, relay-only**
   (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers replaced): the
   Android connection-stability work needs every peer on the relay, so there is deliberately
   no direct-path or public-STUN fallback to hide behind.
+- **The signalling connection outlives its socket.** Trystero asks for a relay once per room
+  and holds that reference for the room's life, so a dropped `/signal` socket used to end
+  discovery for good — a Worker redeploy left the screen playing happily to the listeners it
+  already had, listener count unchanged, and invisible to every join until its tab was
+  reloaded. Followers recovered only by accident, via the watchdog's room rebuild; a screen
+  has no such trigger, because from where it stands nothing went wrong. The connection in
+  [worker-strategy.ts](src/transport/worker-strategy.ts) now reconnects underneath Trystero
+  with jittered backoff (500 ms doubling to 15 s, 45 s while hidden, retried at once on
+  becoming visible), re-subscribes the room's topics and **re-announces** — the relay drops a
+  socket's retained announce when it closes, so without that last step the room would come
+  back silent to new joiners. Peer connections are untouched throughout; the room is never
+  rebuilt. Verified by killing the Worker mid-session: drop seen in 1 s, recovery logged with
+  `2 topics restored`, and the next listener peered in under a second.
 - **TURN credentials are minted per client, not built in.** A Cloudflare Worker
   ([worker/index.ts](worker/index.ts)) holds the long-lived TURN key and issues a short-lived
   pair from `/api/ice`; the client re-fetches whenever its grant is within 5 minutes of
