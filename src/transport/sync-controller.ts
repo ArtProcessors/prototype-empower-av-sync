@@ -12,6 +12,7 @@
  */
 import type { Room } from 'trystero'
 
+import type { VideoId } from '../content'
 import { monitorPeerConnection } from '../diagnostics/peer-monitor'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import {
@@ -25,6 +26,9 @@ import { describeIceConfig, getRtcConfig } from './ice-config'
 
 /** Which end of the star topology this device is. */
 export type Role = 'screen' | 'follower'
+
+/** Trystero action names on the sync channel. */
+type SyncActionName = 'beat' | 'clk'
 
 const BEAT_MS = 250 // screen broadcasts 4×/sec
 const CLOCK_INTERVAL_MS = 3000 // follower re-samples clock offset every 3s
@@ -76,7 +80,7 @@ type Listener = () => void
 /** Supplies the screen's live playback position for the next beat. */
 type BeatSource = () => {
   /** Id of the video the screen is playing. */
-  mediaId: string
+  mediaId: VideoId
   /** The screen's `video.currentTime`, in seconds. */
   videoTime: number
   /** Whether the video is playing rather than paused. */
@@ -207,11 +211,11 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
   }
 
   // ── beat channel (screen → all) ──
-  const beatAction = room.makeAction('beat')
+  const beatAction = room.makeAction('beat' satisfies SyncActionName)
   const sendBeat = beatAction.send as (beat: unknown) => Promise<void>
 
   // ── clock RPC (follower → screen) ──
-  const clockAction = room.makeAction('clk', {
+  const clockAction = room.makeAction('clk' satisfies SyncActionName, {
     kind: 'request',
     onRequest: () => Date.now(),
   })

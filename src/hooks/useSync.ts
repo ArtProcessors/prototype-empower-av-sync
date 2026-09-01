@@ -14,6 +14,7 @@ import {
   VIDEOS,
   DEFAULT_VIDEO_ID,
   videoById,
+  type VideoId,
   type VideoOption,
 } from '../content'
 import { startLifecycleMonitoring } from '../diagnostics/lifecycle-monitor'
@@ -26,6 +27,7 @@ import { recordDiagnostic } from '../diagnostics/session-log'
 import { preflightTurn } from '../diagnostics/turn-preflight'
 import {
   AudioSyncController,
+  type AudioEngineKind,
   type CorrectionInfo,
 } from '../media/audio-sync-controller'
 import { computeTarget } from '../sync/sync-math'
@@ -106,14 +108,14 @@ export interface SyncApi {
   /** Lock-screen keep-alive sink is active. */
   audioBgKeepAlive: boolean
   /** Which follower output path is live. */
-  audioEngine: 'element' | 'buffer' | 'stream' | 'syncing'
+  audioEngine: AudioEngineKind
 
   /** Videos the screen can lead with. */
   videos: VideoOption[]
   /** Id of the currently selected video. */
-  videoId: string
+  videoId: VideoId
   /** Select the video the screen will lead with. */
-  setVideoId: (id: string) => void
+  setVideoId: (id: VideoId) => void
 
   /** Whether the user has opted in to keeping the screen awake. */
   keepAwake: boolean
@@ -149,7 +151,7 @@ export function useSync(): SyncApi {
   })
   const [localTime, setLocalTime] = useState(0)
   const [targetTime, setTargetTime] = useState<number | null>(null)
-  const [videoId, setVideoId] = useState<string>(DEFAULT_VIDEO_ID)
+  const [videoId, setVideoId] = useState<VideoId>(DEFAULT_VIDEO_ID)
   const [keepAwake, setKeepAwakeState] = useState(readKeepAwakePref)
 
   const setKeepAwake = useCallback((on: boolean) => {

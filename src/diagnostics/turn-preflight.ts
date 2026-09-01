@@ -16,6 +16,9 @@
 import { describeIceConfig, getRtcConfig } from '../transport/ice-config'
 import { recordDiagnostic } from './session-log'
 
+/** How this device reaches TURN (Chromium `RTCIceCandidate.relayProtocol`). */
+type RelayProtocol = 'udp' | 'tcp' | 'tls'
+
 /** How long to wait for candidates before reporting what was gathered. */
 const PREFLIGHT_TIMEOUT_MS = 5000
 
@@ -60,7 +63,7 @@ export async function preflightTurn(): Promise<void> {
       // Not `protocol`: on a relay candidate that is always `udp` (the leg
       // beyond the TURN server). `relayProtocol` is how this device reaches
       // TURN — the link that matters when a radio starts dropping traffic.
-      const relayProtocol = (candidate as { relayProtocol?: string })
+      const relayProtocol = (candidate as { relayProtocol?: RelayProtocol })
         .relayProtocol
 
       relayProtocols.add(relayProtocol ?? candidate.protocol ?? '?')

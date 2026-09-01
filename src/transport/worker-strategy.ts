@@ -75,6 +75,11 @@ interface RelayMessage {
   payload?: unknown
 }
 
+/** Client → relay verbs (mirrors the Durable Object protocol). */
+type OutboundRelayMessage =
+  | { type: 'subscribe' | 'unsubscribe' | 'unpublish'; topic: string }
+  | { type: 'publish'; topic: string; payload?: unknown; retain?: boolean }
+
 /**
  * A relay connection that survives losing its socket: it remembers what it is
  * subscribed to and what it last announced, and restores both on reconnect.
@@ -164,7 +169,7 @@ function createRelayConnection(initial: WebSocket): RelayConnection {
    * whose answer never came is retried by the room. What does have to survive
    * is the subscription and announce state, which {@link restore} replays.
    */
-  const send = (message: object): void => {
+  const send = (message: OutboundRelayMessage): void => {
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(toJson(message))
     }

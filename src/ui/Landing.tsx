@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { isVideoId } from '../content'
 import { readRejoinRoom, type SyncApi } from '../hooks/useSync'
 import { STRATEGY } from '../transport/config'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
@@ -53,7 +54,13 @@ export function Landing({ api }: { api: SyncApi }) {
           <span className="muted small">Video</span>
           <select
             value={api.videoId}
-            onChange={event => api.setVideoId(event.target.value)}
+            onChange={event => {
+              const id = event.target.value
+
+              if (isVideoId(id)) {
+                api.setVideoId(id)
+              }
+            }}
           >
             {api.videos.map(video => (
               <option key={video.id} value={video.id}>

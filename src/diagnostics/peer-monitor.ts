@@ -16,6 +16,9 @@
  */
 import { recordDiagnostic } from './session-log'
 
+/** How this device reaches TURN (Chromium `RTCIceCandidate.relayProtocol`). */
+type RelayProtocol = 'udp' | 'tcp' | 'tls'
+
 /** Short peer id used in log lines, to keep them readable on a phone. */
 function shortPeerId(peerId: string): string {
   return peerId.slice(0, 6)
@@ -66,8 +69,9 @@ async function reportSelectedCandidatePair(
     // actually holds. The transport we care about, the one power-save might be
     // dropping, is `relayProtocol` (udp | tcp | tls). It is Chromium-only and
     // absent from the DOM types, hence the cast.
-    const relayProtocol = (local as { relayProtocol?: string } | undefined)
-      ?.relayProtocol
+    const relayProtocol = (
+      local as { relayProtocol?: RelayProtocol } | undefined
+    )?.relayProtocol
     const protocol = relayProtocol ?? local?.protocol ?? '?'
 
     // This build relays everything through Cloudflare, so anything other than

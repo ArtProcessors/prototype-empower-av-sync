@@ -38,10 +38,17 @@
  * is a later optimisation, not a correctness requirement.
  */
 
+/** Client → relay verbs. Unknown values are ignored at runtime. */
+type ClientMessageType =
+  | 'subscribe'
+  | 'unsubscribe'
+  | 'publish'
+  | 'unpublish'
+
 /** A message arriving from a client. */
 interface ClientMessage {
   /** What the client wants done. */
-  type?: string
+  type?: ClientMessageType
   /** Topic being subscribed to, unsubscribed from, or published to. */
   topic?: unknown
   /** Opaque signalling payload; only `publish` carries one. */
@@ -157,53 +164,61 @@ export class SignalRelay implements DurableObject {
       return
     }
 
-    if (message.type === 'subscribe') {
-      const state = readState(socket)
+    switch (message.type) {
+      case 'subscribe': {
+        const state = readState(socket)
 
-      if (
-        !state.topics.includes(topic) &&
-        state.topics.length < MAX_TOPICS_PER_SOCKET
-      ) {
-        writeState(socket, { ...state, topics: [...state.topics, topic] })
+        if (
+          !state.topics.includes(topic) &&
+          state.topics.length < MAX_TOPICS_PER_SOCKET
+        ) {
+          writeState(socket, { ...state, topics: [...state.topics, topic] })
+        }
+
+        this.replayAnnounces(socket, topic)
+
+        return
       }
 
-      this.replayAnnounces(socket, topic)
+      case 'unsubscribe': {
+        const state = readState(socket)
 
-      return
-    }
+        writeState(socket, {
+          ...state,
+          topics: state.topics.filter(existing => existing !== topic),
+        })
 
-    if (message.type === 'unsubscribe') {
-      const state = readState(socket)
-
-      writeState(socket, {
-        ...state,
-        topics: state.topics.filter(existing => existing !== topic),
-      })
-
-      return
-    }
-
-    // A passive peer that has gone dormant withdraws its announce, so nobody
-    // subscribing later is told to dial a peer that has stopped listening.
-    if (message.type === 'unpublish') {
-      const state = readState(socket)
-
-      if (topic in state.announces) {
-        const announces = { ...state.announces }
-
-        delete announces[topic]
-        writeState(socket, { ...state, announces })
+        return
       }
 
-      return
-    }
+      // A passive peer that has gone dormant withdraws its announce, so nobody
+      // subscribing later is told to dial a peer that has stopped listening.
+      case 'unpublish': {
+        const state = readState(socket)
 
-    if (message.type === 'publish') {
-      if (message.retain === true) {
-        this.retainAnnounce(socket, topic, message.payload)
+        if (topic in state.announces) {
+          const announces = { ...state.announces }
+
+          delete announces[topic]
+          writeState(socket, { ...state, announces })
+        }
+
+        return
       }
 
-      this.broadcast(socket, topic, message.payload)
+      case 'publish': {
+        if (message.retain === true) {
+          this.retainAnnounce(socket, topic, message.payload)
+        }
+
+        this.broadcast(socket, topic, message.payload)
+
+        return
+      }
+
+      default:
+        // Unknown or missing type — ignore (untrusted JSON).
+        return
     }
   }
 

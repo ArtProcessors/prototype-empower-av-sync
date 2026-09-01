@@ -21,10 +21,13 @@ import soundtrack from './soundtrack.m4a'
 /** Default/primer soundtrack (also the `test` option's audio). */
 export const SYNTH_SOUNDTRACK_URL: string = soundtrack
 
+/** Selectable video ids broadcast on every beat as `mediaId`. */
+export type VideoId = 'test' | 'soh' | 'sync45'
+
 /** One video the screen can lead with, plus the audio followers play. */
 export interface VideoOption {
   /** Stable id broadcast on every beat as `mediaId`. */
-  id: string
+  id: VideoId
   /** Human-readable name shown in the screen's video picker. */
   label: string
   /** Video file played by the screen. */
@@ -68,7 +71,7 @@ export const VIDEOS: VideoOption[] = [
 ]
 
 /** Video the screen leads with until the user picks another. */
-export const DEFAULT_VIDEO_ID = 'test'
+export const DEFAULT_VIDEO_ID: VideoId = 'test'
 
 /**
  * Look up a video option by id, falling back to the first option when the id
@@ -76,4 +79,9 @@ export const DEFAULT_VIDEO_ID = 'test'
  */
 export function videoById(id: string): VideoOption {
   return VIDEOS.find(video => video.id === id) ?? VIDEOS[0]
+}
+
+/** Whether `id` is a known selectable video id. */
+export function isVideoId(id: string): id is VideoId {
+  return VIDEOS.some(video => video.id === id)
 }

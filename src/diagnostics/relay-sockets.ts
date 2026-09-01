@@ -15,9 +15,18 @@ import { loadStrategy } from '../transport/config'
 import { recordDiagnostic } from './session-log'
 
 /** `WebSocket.readyState` values, named for the log. */
-const READY_STATE_NAMES = ['connecting', 'open', 'closing', 'closed']
+const READY_STATE_NAMES = [
+  'connecting',
+  'open',
+  'closing',
+  'closed',
+] as const
 
-function describeReadyState(socket: WebSocket): string {
+type WebSocketReadyStateName = (typeof READY_STATE_NAMES)[number]
+
+function describeReadyState(
+  socket: WebSocket,
+): WebSocketReadyStateName | `unknown(${number})` {
   return (
     READY_STATE_NAMES[socket.readyState] ?? `unknown(${socket.readyState})`
   )
@@ -32,11 +41,16 @@ function relayHost(url: string): string {
   }
 }
 
+/** Why relay health was sampled — extend as new call sites appear. */
+export type RelayReportContext = 'rejoin'
+
 /**
  * Record how many signalling relays are connected, naming any that are not.
  * Best-effort: never throws, and never blocks the caller's own work.
  */
-export async function reportRelaySockets(context: string): Promise<void> {
+export async function reportRelaySockets(
+  context: RelayReportContext,
+): Promise<void> {
   try {
     const { getRelaySockets } = await loadStrategy()
     const sockets = Object.entries(getRelaySockets() ?? {})

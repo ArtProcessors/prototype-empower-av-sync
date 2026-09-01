@@ -49,6 +49,9 @@ const IS_IOS =
 /** What the corrector did on the latest tick. */
 export type CorrectionMode = 'idle' | 'syncing' | 'seek' | 'nudge' | 'locked'
 
+/** Which follower output path is live. */
+export type AudioEngineKind = 'element' | 'buffer' | 'stream' | 'syncing'
+
 /** One tick's correction result, for the UI readout. */
 export interface CorrectionInfo {
   /** What the corrector did on this tick. */
@@ -325,7 +328,7 @@ export class AudioSyncController {
   }
 
   /** Which output path is live — for the debug panel. */
-  get engineKind(): 'element' | 'buffer' | 'stream' | 'syncing' {
+  get engineKind(): AudioEngineKind {
     if (this.enginePending) {
       return 'syncing'
     }
