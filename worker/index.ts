@@ -23,6 +23,9 @@
  * Durable Object (see `signal-relay.ts`) — replacing the public Nostr relays
  * that rate-limited peer discovery.
  */
+import { ICE_PATH, PING_PATH, SIGNAL_PATH } from '../shared/api-routes'
+import type { IceConfigResponse, IceServerPayload } from '../shared/ice'
+
 export { SignalRelay } from './signal-relay'
 
 /** Bindings and secrets this Worker expects; see `wrangler.toml`. */
@@ -53,21 +56,6 @@ export interface Env {
   SIGNAL_RELAY: DurableObjectNamespace
 }
 
-/** Path the client fetches its ICE configuration from. */
-const ICE_PATH = '/api/ice'
-
-/**
- * Cheap liveness endpoint. The client polls it while the page is hidden to
- * find out whether the phone still has a usable network at all — which splits
- * "the radio is asleep" from "the radio is fine but WebRTC cannot re-peer in
- * the background". Those two have completely different answers, and nothing
- * else in the log distinguishes them.
- */
-const PING_PATH = '/api/ping'
-
-/** WebSocket endpoint peers meet on; upgraded straight into the Durable Object. */
-const SIGNAL_PATH = '/signal'
-
 /**
  * Durable Object instance name. One hub serves every room — Trystero namespaces
  * its topics by app and room id already, so rooms stay isolated without a DO
@@ -80,26 +68,6 @@ const DEFAULT_TTL_SECONDS = 7200
 
 /** Cloudflare's credential-minting endpoint. */
 const TURN_API_BASE = 'https://rtc.live.cloudflare.com/v1/turn/keys'
-
-/** What {@link ICE_PATH} returns to the client. */
-interface IceConfigResponse {
-  /** ICE servers, complete with the freshly minted credentials. */
-  iceServers: RTCIceServerPayload[]
-  /** Epoch milliseconds at which these credentials stop working. */
-  expiresAt: number
-  /** Lifetime the credentials were minted with, in seconds. */
-  ttlSeconds: number
-}
-
-/** One ICE server entry as Cloudflare returns it. */
-interface RTCIceServerPayload {
-  /** STUN/TURN endpoints this credential is valid for. */
-  urls: string[]
-  /** TURN username; absent on the STUN-only entry. */
-  username?: string
-  /** TURN credential; absent on the STUN-only entry. */
-  credential?: string
-}
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -181,7 +149,7 @@ async function issueIceConfig(env: Env): Promise<Response> {
   }
 
   const payload = (await upstream.json()) as {
-    iceServers?: RTCIceServerPayload[]
+    iceServers?: IceServerPayload[]
   }
   const iceServers = payload.iceServers
 

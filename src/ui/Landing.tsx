@@ -1,26 +1,25 @@
 import { useState } from 'react'
 
-import { isVideoId } from '../content'
-import { readRejoinRoom, type SyncApi } from '../hooks/useSync'
+import { roomCodeFromSearch } from '../core/join-link'
+import { readRejoinRoom } from '../core/rejoin-memory'
+import { isRoomCodeAcceptable, maxRoomCodeLength } from '../core/room-code'
 import { STRATEGY } from '../transport/config'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
-
-const MIN_ROOM_CODE_LENGTH = 3
-const MAX_ROOM_CODE_LENGTH = 8
+import type { ViewProps } from './view-props'
 
 /**
  * The entry screen: lead a room as the screen, or join an existing one as a
  * listener.
  */
-export function Landing({ api }: { api: SyncApi }) {
-  const params = new URLSearchParams(window.location.search)
+export function Landing({ state, session }: ViewProps) {
   // Prefill from ?room=, else the room we were in before a reload/tab-discard.
+  // An explicit but blank `?room=` still wins over the remembered room.
   const rejoinRoom = readRejoinRoom()
   const [code, setCode] = useState(
-    params.get('room')?.toUpperCase() ?? rejoinRoom ?? '',
+    roomCodeFromSearch(window.location.search) ?? rejoinRoom ?? '',
   )
-  const connecting = api.phase === 'connecting'
+  const connecting = state.phase === 'connecting'
 
   return (
     <main className="wrap">
@@ -30,15 +29,18 @@ export function Landing({ api }: { api: SyncApi }) {
         WebRTC ({STRATEGY})
       </p>
 
-      {api.error && <p className="error">⚠ {api.error}</p>}
+      {state.error && <p className="error">⚠ {state.error}</p>}
 
-      {rejoinRoom && !api.error && (
+      {rejoinRoom && !state.error && (
         <div className="card">
           <p>
             🎧 You were listening in room <code>{rejoinRoom}</code>. Reconnect
             to resume synced audio.
           </p>
-          <button disabled={connecting} onClick={() => api.join(rejoinRoom)}>
+          <button
+            disabled={connecting}
+            onClick={() => session.join(rejoinRoom)}
+          >
             {connecting ? 'Reconnecting…' : `🎧 Rejoin ${rejoinRoom}`}
           </button>
         </div>
@@ -53,24 +55,18 @@ export function Landing({ api }: { api: SyncApi }) {
         <label className="field">
           <span className="muted small">Video</span>
           <select
-            value={api.videoId}
-            onChange={event => {
-              const id = event.target.value
-
-              if (isVideoId(id)) {
-                api.setVideoId(id)
-              }
-            }}
+            value={state.media.selectedId}
+            onChange={event => session.selectVideo(event.target.value)}
           >
-            {api.videos.map(video => (
+            {state.media.options.map(video => (
               <option key={video.id} value={video.id}>
                 {video.label}
               </option>
             ))}
           </select>
         </label>
-        <KeepAwakeOption api={api} />
-        <button disabled={connecting} onClick={() => api.becomeScreen()}>
+        <KeepAwakeOption state={state} session={session} />
+        <button disabled={connecting} onClick={() => session.becomeScreen()}>
           {connecting ? 'Starting…' : '📺 Be the screen'}
         </button>
       </div>
@@ -82,16 +78,19 @@ export function Landing({ api }: { api: SyncApi }) {
         </p>
         <input
           value={code}
+          // Upper-case only, deliberately not the full normalisation: trimming
+          // as the user types would fight the cursor. Trimming is
+          // `isRoomCodeAcceptable`'s and the session's job.
           onChange={event => setCode(event.target.value.toUpperCase())}
           placeholder="e.g. K7QF"
-          maxLength={MAX_ROOM_CODE_LENGTH}
+          maxLength={maxRoomCodeLength()}
           autoCapitalize="characters"
           autoCorrect="off"
         />
-        <KeepAwakeOption api={api} />
+        <KeepAwakeOption state={state} session={session} />
         <button
-          disabled={connecting || code.trim().length < MIN_ROOM_CODE_LENGTH}
-          onClick={() => api.join(code)}
+          disabled={connecting || !isRoomCodeAcceptable(code)}
+          onClick={() => session.join(code)}
         >
           {connecting ? 'Connecting…' : '🎧 Join (tap to enable audio)'}
         </button>

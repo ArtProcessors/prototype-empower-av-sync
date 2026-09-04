@@ -34,10 +34,9 @@
  */
 import { createTopicStrategy, toJson } from '@trystero-p2p/core'
 
+import type { ClientMessage, RelayFrame } from '../../shared/relay-protocol'
 import { recordDiagnostic } from '../diagnostics/session-log'
-
-/** Path the Worker upgrades to the signalling Durable Object. */
-const SIGNAL_PATH = '/signal'
+import { transportConfig } from './transport-config'
 
 /** How long to wait for the relay socket before giving up on a join. */
 const CONNECT_TIMEOUT_MS = 8000
@@ -67,19 +66,6 @@ const RECONNECT_JITTER = 0.3
 /** Receives payloads published to a subscribed topic. */
 type TopicHandler = (topic: string, payload: unknown) => void
 
-/** A message broadcast back by the relay. */
-interface RelayMessage {
-  /** Topic the payload was published to. */
-  topic?: unknown
-  /** The opaque signalling payload. */
-  payload?: unknown
-}
-
-/** Client → relay verbs (mirrors the Durable Object protocol). */
-type OutboundRelayMessage =
-  | { type: 'subscribe' | 'unsubscribe' | 'unpublish'; topic: string }
-  | { type: 'publish'; topic: string; payload?: unknown; retain?: boolean }
-
 /**
  * A relay connection that survives losing its socket: it remembers what it is
  * subscribed to and what it last announced, and restores both on reconnect.
@@ -105,7 +91,7 @@ interface RelayConnection {
  * Vite proxies it. Either way there is no host to configure.
  */
 function relayUrl(): string {
-  const url = new URL(SIGNAL_PATH, window.location.href)
+  const url = new URL(transportConfig().signalPath, window.location.href)
 
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
 
@@ -169,17 +155,17 @@ function createRelayConnection(initial: WebSocket): RelayConnection {
    * whose answer never came is retried by the room. What does have to survive
    * is the subscription and announce state, which {@link restore} replays.
    */
-  const send = (message: OutboundRelayMessage): void => {
+  const send = (message: ClientMessage): void => {
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(toJson(message))
     }
   }
 
   const onMessage = (event: MessageEvent): void => {
-    let message: RelayMessage
+    let message: RelayFrame
 
     try {
-      message = JSON.parse(String(event.data)) as RelayMessage
+      message = JSON.parse(String(event.data)) as RelayFrame
     } catch {
       return
     }

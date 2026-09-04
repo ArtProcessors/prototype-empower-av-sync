@@ -5,15 +5,26 @@ import { ScreenView } from './ScreenView'
 
 /** Root view: routes to the screen, listener, or landing view by phase. */
 export function App() {
-  const api = useSync()
+  const { state, session, mountScreenVideo } = useSync()
 
-  if (api.phase === 'active' && api.state) {
-    return api.state.role === 'screen' ? (
-      <ScreenView api={api} />
+  // Narrowed once here so the session views can take a non-null transport
+  // rather than each re-asserting what this branch already established.
+  if (state.phase === 'active' && state.transport) {
+    return state.transport.role === 'screen' ? (
+      <ScreenView
+        state={state}
+        session={session}
+        transport={state.transport}
+        mountScreenVideo={mountScreenVideo}
+      />
     ) : (
-      <FollowerView api={api} />
+      <FollowerView
+        state={state}
+        session={session}
+        transport={state.transport}
+      />
     )
   }
 
-  return <Landing api={api} />
+  return <Landing state={state} session={session} />
 }

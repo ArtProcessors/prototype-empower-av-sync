@@ -1,7 +1,6 @@
 /**
  * Fetches ICE configuration — including live Cloudflare TURN credentials — from
- * the Worker at {@link ICE_ENDPOINT}, and caches it until shortly before it
- * expires.
+ * the Worker's ICE route, and caches it until shortly before it expires.
  *
  * Credentials are deliberately not baked into the bundle. Cloudflare's expire,
  * and the failure lands in the worst place: a follower's watchdog rejoin builds
@@ -13,11 +12,10 @@
  * back the cached grant while it has comfortable life left and re-fetches once
  * it does not.
  */
+import type { IceConfigResponse } from '../../shared/ice'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import { CLOUDFLARE_ICE_URLS, ICE_TRANSPORT_POLICY } from './config'
-
-/** Worker route that mints a credential pair for this client. */
-const ICE_ENDPOINT = '/api/ice'
+import { transportConfig } from './transport-config'
 
 /**
  * Re-fetch once a grant has less than this left. Generous on purpose: the
@@ -29,25 +27,12 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000
 /** Give up on a credential fetch after this long. */
 const FETCH_TIMEOUT_MS = 8000
 
-/** One issued set of ICE servers and the moment it stops working. */
-interface IceGrant {
-  /** ICE servers exactly as the Worker returned them. */
-  iceServers: IceServerPayload[]
-  /** Epoch milliseconds at which the credentials expire. */
-  expiresAt: number
-  /** Lifetime the credentials were minted with, in seconds. */
-  ttlSeconds: number
-}
-
-/** One ICE server entry from the Worker. */
-interface IceServerPayload {
-  /** STUN/TURN endpoints this credential covers. */
-  urls: string[]
-  /** TURN username; absent on Cloudflare's STUN-only entry. */
-  username?: string
-  /** TURN credential; absent on Cloudflare's STUN-only entry. */
-  credential?: string
-}
+/**
+ * One issued set of ICE servers and the moment it stops working — the Worker's
+ * response, verbatim. Declared once in `shared/ice.ts` so the two ends cannot
+ * drift.
+ */
+type IceGrant = IceConfigResponse
 
 let cached: IceGrant | null = null
 let inFlight: Promise<IceGrant> | null = null
@@ -76,7 +61,7 @@ function reportUnusedUrls(grant: IceGrant): void {
 }
 
 async function fetchGrant(): Promise<IceGrant> {
-  const response = await fetch(ICE_ENDPOINT, {
+  const response = await fetch(transportConfig().icePath, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
@@ -145,7 +130,8 @@ async function getGrant(): Promise<IceGrant> {
     }
 
     throw new Error(
-      `Could not get TURN credentials from ${ICE_ENDPOINT}: ${message}. ` +
+      `Could not get TURN credentials from ${transportConfig().icePath}: ` +
+        `${message}. ` +
         'This build relays every connection and has no direct-path fallback, ' +
         'so joining is not possible until the Worker responds.',
     )

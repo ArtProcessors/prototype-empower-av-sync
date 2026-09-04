@@ -110,7 +110,7 @@ export function startLifecycleMonitoring(): void {
   // `freeze` is the definitive signal that Chrome stopped the renderer; it is
   // also our last chance to persist the log before that happens.
   const onFreeze = () => {
-    recordDiagnostic('page', 'FROZEN by the browser')
+    recordDiagnostic('page', 'FROZEN by the browser', { tag: 'page-frozen' })
     flushDiagnostics()
   }
 
@@ -158,6 +158,7 @@ export function startLifecycleMonitoring(): void {
       recordDiagnostic(
         'timer',
         `liveness gap ${(gap / 1000).toFixed(1)}s — timers stalled`,
+        { tag: 'timer-stall', value: gap / 1000 },
       )
     }
   }, LIVENESS_TICK_MS)

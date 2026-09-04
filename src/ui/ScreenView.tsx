@@ -1,45 +1,48 @@
-import type { SyncApi } from '../hooks/useSync'
+import { joinUrl } from '../core/join-link'
 import { DebugPanel } from './DebugPanel'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import { QRCode } from './QRCode'
+import { SessionTopBar } from './SessionTopBar'
+import type { SessionViewProps } from './view-props'
 
 /** The leader's screen: the looping video plus the code listeners join with. */
-export function ScreenView({ api }: { api: SyncApi }) {
-  const syncState = api.state!
-  const joinUrl = `${window.location.origin}${window.location.pathname}?room=${syncState.roomCode}`
-  const nowPlaying =
-    api.videos.find(video => video.id === api.videoId)?.label ?? api.videoId
+export function ScreenView({
+  state,
+  session,
+  transport,
+  mountScreenVideo,
+}: SessionViewProps & {
+  /** Ref callback that mounts the persistent screen video into a container. */
+  mountScreenVideo: (container: HTMLElement | null) => void
+}) {
+  const listenerUrl = joinUrl(transport.roomCode)
 
   return (
     <main className="wrap">
-      <header className="topbar">
-        <div>
-          <b>📺 Screen</b> <span className="muted">· room </span>
-          <code className="roomcode big">{syncState.roomCode}</code>
-        </div>
-        <button className="ghost" onClick={() => api.leave()}>
-          Leave
-        </button>
-      </header>
+      <SessionTopBar
+        role={transport.role}
+        roomCode={transport.roomCode}
+        onLeave={() => session.leave()}
+      />
 
-      <p className="muted small">Playing: {nowPlaying}</p>
-      <KeepAwakeOption api={api} />
+      <p className="muted small">Playing: {state.media.selected.label}</p>
+      <KeepAwakeOption state={state} session={session} />
 
       {/* The persistent looping video is mounted here. */}
-      <div className="video-wrap" ref={api.mountScreenVideo} />
+      <div className="video-wrap" ref={mountScreenVideo} />
 
       <div className="share">
-        <QRCode value={joinUrl} size={240} />
+        <QRCode value={listenerUrl} size={240} />
         <div>
           <p className="muted small">
             Scan to join as a listener (audio syncs to this video):
           </p>
-          <p className="muted small">{joinUrl}</p>
+          <p className="muted small">{listenerUrl}</p>
           <p>
-            Listeners: <b>{syncState.peerCount}</b>
+            Listeners: <b>{transport.peerCount}</b>
           </p>
-          {!syncState.signallingOnline && (
+          {!transport.signallingOnline && (
             <p className="connecting">
               ⚠️ Signalling is down — reconnecting. Listeners already connected
               are unaffected, but nobody new can join until this clears.
@@ -48,7 +51,7 @@ export function ScreenView({ api }: { api: SyncApi }) {
         </div>
       </div>
 
-      <DebugPanel api={api} />
+      <DebugPanel state={state} session={session} transport={transport} />
       <DiagnosticsPanel />
     </main>
   )

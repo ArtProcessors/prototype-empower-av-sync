@@ -180,7 +180,9 @@ re-routed, rather than being folded into an EMA that could only crawl.
   silence.
 
 - **A transport watchdog rejoins the room, including while asleep**
-  ([useSync.ts](src/hooks/useSync.ts)). If beats have been absent > 6 s the follower leaves
+  ([transport-watchdog.ts](src/core/transport-watchdog.ts), with the decision itself in
+  [reconnect-policy.ts](src/core/reconnect-policy.ts)). If beats have been absent > 6 s the
+  follower leaves
   and rejoins _without touching the audio engine_ — no gesture is needed and the chain keeps
   playing across the reconnect. While hidden, a rejoin is only attempted once the reachability
   probe has just shown the network is usable: before that gate, a five-minute sleep burned
@@ -324,11 +326,21 @@ Scope boundaries of the current design (as opposed to defects):
 
 **Verified by automated test (re-run for this report):**
 
-- `yarn sim` — Cristian offset/RTT math, lowest-RTT selection, target extrapolation incl.
-  loop wrap and paused state, signed loop-seam drift both directions, correction-rate sign
-  and clamping. **All passing.** Note that the streaming engine's own machinery — window
-  bookkeeping, chain scheduling, clock-ratio regression — has **no automated coverage**; it
-  shares only the pure `signedDrift`/`correctionRate` helpers the sim exercises.
+- `yarn sim` — two suites, **all passing**:
+  - **Sync math** — Cristian offset/RTT math, lowest-RTT selection, target extrapolation incl.
+    loop wrap and paused state, signed loop-seam drift both directions, correction-rate sign
+    and clamping.
+  - **Session policy** — the watchdog's rejoin backoff table (10/20/40/60 s visible,
+    45/90/180/300 s hidden), the staleness rule incl. the "no beat yet is not staleness" case
+    that once tore down every fresh join, room-code generation and normalisation, join-link
+    build↔parse round-tripping, the keep-awake state machine against stubbed platform APIs,
+    and the diagnostics summary's tag counting and its wording fallback.
+- `yarn build` type-checks the app, the Worker and the sims as one gate.
+
+  Note that the streaming engine's own machinery — window bookkeeping, chain scheduling,
+  clock-ratio regression — still has **no automated coverage**; it shares only the pure
+  `signedDrift`/`correctionRate` helpers the sim exercises. Neither does the follower's
+  correction state machine (`AudioSyncController.correct`), which remains device-verified only.
 
 **Verified manually during the spike (per README and commit history; not re-run here):**
 

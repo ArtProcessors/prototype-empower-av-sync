@@ -5,8 +5,8 @@ import {
   diagnosticEvents,
   formatDiagnostics,
   subscribeDiagnostics,
-  type DiagnosticEvent,
 } from '../diagnostics/session-log'
+import { summariseDiagnostics } from '../diagnostics/summary'
 
 /** How many of the most recent events the panel renders. */
 const VISIBLE_EVENTS = 60
@@ -20,54 +20,6 @@ function formatClockTime(at: number): string {
 }
 
 /**
- * The headline numbers from a sleep test, so the outcome can be read without
- * scrolling the log on a phone.
- */
-interface DiagnosticSummary {
-  /** Times Chrome reported freezing the page. */
-  freezes: number
-  /** Longest stall observed between liveness-timer ticks, in seconds. */
-  longestStallSec: number
-  /** Times a peer was torn down. */
-  peerLeaves: number
-  /** Times the follower rebuilt its transport. */
-  rejoins: number
-}
-
-function summarise(events: DiagnosticEvent[]): DiagnosticSummary {
-  let freezes = 0
-  let longestStallSec = 0
-  let peerLeaves = 0
-  let rejoins = 0
-
-  for (const event of events) {
-    if (event.category === 'page' && event.message.includes('FROZEN')) {
-      freezes += 1
-    }
-
-    if (event.category === 'peer' && event.message.startsWith('LEAVE')) {
-      peerLeaves += 1
-    }
-
-    // Count attempts only — each one also logs its outcome, which would
-    // otherwise double the total.
-    if (
-      event.category === 'transport' &&
-      event.message.startsWith('rejoining')
-    ) {
-      rejoins += 1
-    }
-
-    if (event.category === 'timer') {
-      const stall = Number(/gap ([\d.]+)s/.exec(event.message)?.[1] ?? 0)
-      longestStallSec = Math.max(longestStallSec, stall)
-    }
-  }
-
-  return { freezes, longestStallSec, peerLeaves, rejoins }
-}
-
-/**
  * The connection-stability instrument: a live event log of ICE transitions,
  * page freezes, timer stalls and rejoin attempts, with a one-tap copy so a log
  * can be taken off a phone after a sleep test.
@@ -75,7 +27,7 @@ function summarise(events: DiagnosticEvent[]): DiagnosticSummary {
 export function DiagnosticsPanel() {
   const events = useSyncExternalStore(subscribeDiagnostics, diagnosticEvents)
   const [copied, setCopied] = useState(false)
-  const summary = summarise(events)
+  const summary = summariseDiagnostics(events)
   const recent = events.slice(-VISIBLE_EVENTS).reverse()
 
   const copy = async () => {

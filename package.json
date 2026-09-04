@@ -8,12 +8,15 @@
   "scripts": {
     "start": "vite serve",
     "dev": "vite serve",
-    "build": "tsc --noEmit && yarn worker:check && vite build",
+    "build": "tsc --noEmit && yarn worker:check && yarn test:check && vite build",
     "preview": "vite preview",
-    "sim": "node test/sync-sim.ts",
+    "sim": "yarn sim:math && yarn sim:keep-awake",
+    "sim:math": "node --import ./test/resolve-ts.mjs test/sync-sim.ts",
+    "sim:keep-awake": "node --import ./test/resolve-ts.mjs test/keep-awake-sim.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "worker:check": "tsc --noEmit -p worker/tsconfig.json",
+    "test:check": "tsc --noEmit -p test/tsconfig.json",
     "worker:dev": "wrangler dev --port 8787",
     "deploy": "yarn build && wrangler deploy"
   },

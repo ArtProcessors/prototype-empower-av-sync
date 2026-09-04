@@ -42,7 +42,8 @@ local work.
 | `yarn build`      | Type-check app + Worker, production build (builds the SW)                 |
 | `yarn preview`    | Prod build on :4273 (SW active — offline testing; still needs the Worker) |
 | `yarn deploy`     | Build, then deploy the Worker + SPA to Cloudflare                         |
-| `yarn sim`        | Unit checks for the sync math (`test/sync-sim.ts`)                        |
+| `yarn sim`        | Unit checks for the sync math and session policy (`test/sync-sim.ts`)     |
+| `yarn test:check` | Type-check the sims (they sit outside the app's tsconfig)                 |
 
 To rehearse exactly what deploys — **one origin** serving the app, `/signal` and `/api/ice`,
 service worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is
@@ -147,10 +148,39 @@ real content from remote hosting instead (see [Videos](#videos--adding-your-own)
     track length. Inside a window it behaves exactly like the buffer engine. Needs
     **WebCodecs** (iOS 16.4+), AAC-LC, a faststart MP4, and HTTP Range + CORS.
 
-Pure, tested logic is in `src/sync/sync-math.ts`; transport in
-`src/transport/sync-controller.ts`; the follower audio corrector + engine selection in
-`src/media/audio-sync-controller.ts`, with the two AudioContext engines in
-`src/media/buffer-audio-engine.ts` and `src/media/streaming-buffer-engine.ts`.
+### Where things live
+
+The app is split into a **headless core** and a **React host**, so the sync logic can carry a
+different UI in another project without being rewritten.
+
+| Layer                   | What's in it                                                                                                                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`             | The session: `createSyncSession()` composes the transport, the corrector, the watchdog, the wake lock and the screen's video output, and exposes one snapshot store. No React, no JSX. `src/core/index.ts` is the whole public surface. |
+| `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math.                                                                                                                                                                                        |
+| `src/transport/`        | Trystero rooms, beats, the clock RPC, ICE config and the Worker signalling strategy.                                                                                                                                                    |
+| `src/media/`            | The follower's corrector and its three output paths (`audio-sync-controller.ts`, `buffer-audio-engine.ts`, `streaming-buffer-engine.ts`).                                                                                               |
+| `src/diagnostics/`      | The session log and the monitors that feed it.                                                                                                                                                                                          |
+| `src/content/`          | _This app's_ media — the catalogue is handed to the core, not imported by it.                                                                                                                                                           |
+| `src/ui/`, `src/hooks/` | The React host. `useSync()` is ~35 lines: it subscribes to the session's snapshot and hands it to the views.                                                                                                                            |
+| `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig.                                                                                                                                                          |
+
+### Reusing the core
+
+```ts
+import { createSyncSession, configureSession } from './core'
+
+configureSession({ timing: { transportStaleMs: 8000 } }) // optional
+const session = createSyncSession({ media: myCatalogue })
+
+session.start()
+session.subscribe(() => render(session.getState()))
+await session.join('K7QF') // inside a user gesture
+```
+
+`createSyncSession` needs a `MediaCatalogue` and nothing else; the browser defaults cover the
+rest. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
+Trystero app id and the Worker routes are `configureTransport()` in `src/transport/`. Both
+default to what this app uses, and nothing here calls either.
 
 ## Diagnostics
 
@@ -209,6 +239,28 @@ The separate audio debug panel above it shows the live `engine`, `audio out` and
   synced source. Worth watching the screen's listener count as well as the phone: a follower that
   has silently lost its connection still plays. Verified by
   device testing rather than measurement; see [FEASIBILITY.md](FEASIBILITY.md) for what's open.
+
+### Regression checklist
+
+The automated checks cover the pure math and the type surface; everything that made this app
+hard is device behaviour. Run this list after any change to the session, the transport or the
+audio path — and **capture a baseline sleep log first**, so step 3 has something to compare
+against. `yarn build` runs the app, Worker and sim type-checks; `yarn sim` runs the unit
+checks; `yarn format:check` runs Prettier.
+
+1. **iOS, join:** tap Join → audible within a few seconds, debug panel shows
+   `engine: buffer` or `stream` and `audio out: web-audio`. Flick the ringer switch off —
+   still audible.
+2. **iOS, lock:** lock the screen mid-session → audio continues; unlock → no audible jump.
+3. **Android, sleep:** 10 minutes screen-off, then copy the connection log. Compare
+   **freezes / peer leaves / rejoins / longest stall** against the baseline — the summary line
+   at the top of the log is the regression signal.
+4. **Rejoin:** reload a follower → the rejoin card offers the right room code. Scan the
+   screen's QR from a second device → joins that room.
+5. **Two clients, 5 minutes foreground:** `mode: locked`, single-digit-ms drift, `rate ≈ 1`,
+   still tracking across a loop wrap; the screen's listener count is right.
+6. **Leave:** leave from both roles → both land on the entry screen, and the rejoin card does
+   **not** appear after a deliberate leave.
 
 ## Videos & adding your own
 
@@ -280,13 +332,14 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
 - **Reconnect after sleep:** Android takes its Wi-Fi down at screen-off — measured, with plain
   HTTPS fetches timing out sixteen times running while the page itself stayed fully awake — so
   the listener vanishes from the screen's count while its audio keeps free-running. A watchdog in
-  `useSync.ts` rejoins the room if beats have been absent > 6 s, without touching the audio
-  engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. While
-  hidden it only attempts a rejoin once a `/api/ping` probe has shown the network is back, since
-  otherwise it is rebuilding rooms against a radio that is not listening; on becoming visible it
-  rejoins straight away if the link is stale. If the tab is discarded outright, the room code is kept in
-  `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
-  real gesture, so that part can't be automatic).
+  the session (`src/core/transport-watchdog.ts`) rejoins the room if beats have been absent
+  > 6 s, without touching the audio
+  > engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. While
+  > hidden it only attempts a rejoin once a `/api/ping` probe has shown the network is back, since
+  > otherwise it is rebuilding rooms against a radio that is not listening; on becoming visible it
+  > rejoins straight away if the link is stale. If the tab is discarded outright, the room code is kept in
+  > `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
+  > real gesture, so that part can't be automatic).
 - **Automatic output-latency compensation (BYOD — no manual calibration):** what you _hear_
   trails the element/context clock by the device's output latency (~100–300 ms on iOS;
   Bluetooth adds even more). We measure it at runtime from

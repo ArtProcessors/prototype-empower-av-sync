@@ -19,6 +19,6 @@
     "baseUrl": "./src",
     "types": ["vite/client", "vite-plugin-pwa/client"]
   },
-  "include": ["src", "vite.config.ts"],
+  "include": ["src", "shared", "vite.config.ts"],
   "exclude": ["src/service-worker"]
 }

@@ -41,6 +41,31 @@ export type DiagnosticCategory =
   /** Transport rejoin attempts and their outcomes. */
   | 'transport'
 
+/**
+ * Events the summary counts, marked at the point they are emitted.
+ *
+ * The panel used to recover these by matching the log's own wording, which
+ * made a reworded message a silent change to the numbers. A tag says what an
+ * event *is* rather than what it reads like.
+ */
+export type DiagnosticTag =
+  /** The browser froze the page. */
+  | 'page-frozen'
+  /** A peer connection was torn down. */
+  | 'peer-leave'
+  /** The follower started rebuilding its transport. */
+  | 'transport-rejoin'
+  /** A gap between liveness-timer ticks. */
+  | 'timer-stall'
+
+/** Anything extra worth recording alongside a message. */
+export interface DiagnosticDetail {
+  /** What kind of event this is, for the summary. */
+  tag?: DiagnosticTag
+  /** A number the tag carries — a stall length in seconds, say. */
+  value?: number
+}
+
 /** One timestamped observation about the session's health. */
 export interface DiagnosticEvent {
   /** Wall-clock time the event was recorded, in ms since the epoch. */
@@ -51,6 +76,13 @@ export interface DiagnosticEvent {
   message: string
   /** Whether the page was hidden at the moment the event was recorded. */
   hidden: boolean
+  /**
+   * What kind of event this is, for the summary. Absent on events restored
+   * from `sessionStorage` that were written by an older build.
+   */
+  tag?: DiagnosticTag
+  /** A number the tag carries — a stall length in seconds, say. */
+  value?: number
 }
 
 /** Notified after every append; read the new events via `diagnosticEvents()`. */
@@ -117,12 +149,14 @@ function scheduleFlush(): void {
 export function recordDiagnostic(
   category: DiagnosticCategory,
   message: string,
+  detail: DiagnosticDetail = {},
 ): void {
   const event: DiagnosticEvent = {
     at: Date.now(),
     category,
     message,
     hidden: document.visibilityState !== 'visible',
+    ...detail,
   }
 
   events = [...events, event].slice(-MAX_EVENTS)

@@ -15,12 +15,7 @@ import { loadStrategy } from '../transport/config'
 import { recordDiagnostic } from './session-log'
 
 /** `WebSocket.readyState` values, named for the log. */
-const READY_STATE_NAMES = [
-  'connecting',
-  'open',
-  'closing',
-  'closed',
-] as const
+const READY_STATE_NAMES = ['connecting', 'open', 'closing', 'closed'] as const
 
 type WebSocketReadyStateName = (typeof READY_STATE_NAMES)[number]
 
@@ -42,7 +37,7 @@ function relayHost(url: string): string {
 }
 
 /** Why relay health was sampled — extend as new call sites appear. */
-export type RelayReportContext = 'rejoin'
+type RelayReportContext = 'rejoin'
 
 /**
  * Record how many signalling relays are connected, naming any that are not.

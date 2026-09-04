@@ -12,13 +12,9 @@
  * another peer's subscription. A Durable Object is that single coordination
  * point.
  *
- * The protocol is the one Trystero's `createTopicStrategy` documents, plus
- * announce retention (see below):
- *
- *   client → {type: "subscribe" | "unsubscribe" | "publish", topic, payload}
- *   client → {type: "publish", topic, payload, retain: true}   an announce
- *   client → {type: "unpublish", topic}                        drop an announce
- *   server → {topic, payload}   to every *other* subscriber of that topic
+ * The wire format is Trystero's `createTopicStrategy` protocol plus announce
+ * retention, and is written down once in `shared/relay-protocol.ts`. What
+ * follows is why the retention is there.
  *
  * **Announce retention** is the one thing this relay does that a plain pub/sub
  * hub would not, and it is what makes a star topology affordable. Trystero's
@@ -38,16 +34,17 @@
  * is a later optimisation, not a correctness requirement.
  */
 
-/** Client → relay verbs. Unknown values are ignored at runtime. */
-type ClientMessageType =
-  | 'subscribe'
-  | 'unsubscribe'
-  | 'publish'
-  | 'unpublish'
+import type { ClientMessageType } from '../shared/relay-protocol'
 
-/** A message arriving from a client. */
-interface ClientMessage {
-  /** What the client wants done. */
+/**
+ * A frame as it actually arrives: every field optional and untyped, because
+ * anything on a socket is untrusted. `ClientMessage` in `shared/relay-protocol`
+ * describes what a well-behaved client *sends*; this describes what this relay
+ * is willing to *assume*, which is deliberately much less. Each field is
+ * narrowed at the point of use.
+ */
+interface IncomingMessage {
+  /** What the client wants done; anything else is ignored. */
   type?: ClientMessageType
   /** Topic being subscribed to, unsubscribed from, or published to. */
   topic?: unknown
@@ -150,10 +147,10 @@ export class SignalRelay implements DurableObject {
       return
     }
 
-    let message: ClientMessage
+    let message: IncomingMessage
 
     try {
-      message = JSON.parse(raw) as ClientMessage
+      message = JSON.parse(raw) as IncomingMessage
     } catch {
       return
     }

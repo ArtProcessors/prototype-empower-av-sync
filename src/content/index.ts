@@ -15,6 +15,7 @@
  * The screen tags each `beat` with the chosen `mediaId`, so followers load the
  * matching soundtrack.
  */
+import type { MediaCatalogue, MediaOption } from '../core/media-catalogue'
 import screenVideo from './screen.mp4'
 import soundtrack from './soundtrack.m4a'
 
@@ -24,23 +25,13 @@ export const SYNTH_SOUNDTRACK_URL: string = soundtrack
 /** Selectable video ids broadcast on every beat as `mediaId`. */
 export type VideoId = 'test' | 'soh' | 'sync45'
 
-/** One video the screen can lead with, plus the audio followers play. */
-export interface VideoOption {
+/**
+ * One video the screen can lead with. The shape is the core's
+ * {@link MediaOption}; this app only narrows the id to the three it ships.
+ */
+export interface VideoOption extends MediaOption {
   /** Stable id broadcast on every beat as `mediaId`. */
   id: VideoId
-  /** Human-readable name shown in the screen's video picker. */
-  label: string
-  /** Video file played by the screen. */
-  videoUrl: string
-  /** Extracted audio played by followers, on the same timeline as the video. */
-  soundtrackUrl: string
-  /**
-   * Long-form audio: followers stream-decode a sliding window (WebCodecs)
-   * instead of decoding the whole file into one AudioBuffer. Whole-file decode
-   * costs ~21 MB/min, so anything past a few minutes must use this to keep
-   * memory flat. See StreamingBufferEngine.
-   */
-  streaming?: boolean
 }
 
 const LONG_FORM_BASE_URL =
@@ -84,4 +75,11 @@ export function videoById(id: string): VideoOption {
 /** Whether `id` is a known selectable video id. */
 export function isVideoId(id: string): id is VideoId {
   return VIDEOS.some(video => video.id === id)
+}
+
+/** This app's content, in the shape {@link createSyncSession} expects. */
+export const CONTENT_CATALOGUE: MediaCatalogue = {
+  options: VIDEOS,
+  defaultId: DEFAULT_VIDEO_ID,
+  primerSoundtrackUrl: SYNTH_SOUNDTRACK_URL,
 }

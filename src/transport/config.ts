@@ -2,8 +2,8 @@
  * Transport configuration: Trystero matchmaking strategy + the ICE endpoints
  * every peer connection is pinned to.
  *
- * Defaults to Nostr (public-internet signaling, not same-LAN discovery). Swap
- * via the `VITE_TRYSTERO_STRATEGY` environment variable.
+ * Defaults to the app's own Worker relay. Swap via the
+ * `VITE_TRYSTERO_STRATEGY` environment variable.
  *
  * **This build is pinned to Cloudflare's TURN service and nothing else.** The
  * point of the exercise is to find out whether a managed relay fixes the
@@ -41,9 +41,6 @@ export type Strategy = 'worker' | 'nostr' | 'mqtt' | 'torrent'
 /** Matchmaking backend this build joins rooms with. */
 export const STRATEGY: Strategy =
   (import.meta.env.VITE_TRYSTERO_STRATEGY as Strategy) || 'worker'
-
-/** Trystero namespace — peers only meet other peers using the same id. */
-export const APP_ID = 'empower-av-sync-v1'
 
 /**
  * The only ICE endpoints this build will use — every Cloudflare transport and

@@ -17,7 +17,6 @@
  * Autoplay gate: unlock() must run inside the join tap (fires play() before
  * any await).
  */
-import { SYNTH_SOUNDTRACK_URL } from '../content'
 import { signedDrift, correctionRate } from '../sync/sync-math'
 import { BufferAudioEngine } from './buffer-audio-engine'
 import { StreamingBufferEngine } from './streaming-buffer-engine'
@@ -51,6 +50,25 @@ export type CorrectionMode = 'idle' | 'syncing' | 'seek' | 'nudge' | 'locked'
 
 /** Which follower output path is live. */
 export type AudioEngineKind = 'element' | 'buffer' | 'stream' | 'syncing'
+
+/** What a follower's lock screen shows while audio is playing. */
+export interface NowPlayingInfo {
+  /** Title shown on the lock screen. */
+  title: string
+  /** Artist line shown under the title. */
+  artist: string
+}
+
+/** How to build an {@link AudioSyncController}. */
+export interface AudioSyncOptions {
+  /**
+   * A short clip used only to prime the `<audio>` element inside the unlock
+   * gesture, before any real soundtrack is known. Never heard.
+   */
+  primerSoundtrackUrl: string
+  /** What a follower's lock screen shows. Defaults to a generic label. */
+  nowPlaying?: NowPlayingInfo
+}
 
 /** One tick's correction result, for the UI readout. */
 export interface CorrectionInfo {
@@ -169,12 +187,22 @@ export class AudioSyncController {
   /** Whether {@link unlock} has run inside a user gesture. */
   unlocked = false
 
+  /** What this device shows on its lock screen while audio is playing. */
+  private readonly nowPlaying: NowPlayingInfo
+
   /**
    * Build the fallback <audio> element and the engines this platform can
    * use. Nothing here touches the AudioContext — that waits for the join tap
    * (see {@link unlock}).
    */
-  constructor() {
+  constructor(options: AudioSyncOptions) {
+    const primerUrl = options.primerSoundtrackUrl
+
+    this.nowPlaying = options.nowPlaying ?? {
+      title: 'Live audio',
+      artist: 'Live audio session',
+    }
+
     const element = new Audio()
     // Must be set BEFORE the src loads: the element is routed through Web
     // Audio (createMediaElementSource), and a cross-origin soundtrack loaded
@@ -185,14 +213,14 @@ export class AudioSyncController {
     element.loop = true
     element.preload = 'auto'
     element.preservesPitch = true
-    element.src = SYNTH_SOUNDTRACK_URL
+    element.src = primerUrl
 
     const vendorProps = element as unknown as Record<string, unknown>
     vendorProps.mozPreservesPitch = true
     vendorProps.webkitPreservesPitch = true
 
     this.element = element
-    this.currentUrl = SYNTH_SOUNDTRACK_URL
+    this.currentUrl = primerUrl
 
     if (WEBCODECS_OK) {
       this.streamEngine = new StreamingBufferEngine(() =>
@@ -486,10 +514,7 @@ export class AudioSyncController {
 
     try {
       if ('MediaMetadata' in window) {
-        mediaSession.metadata = new MediaMetadata({
-          title: 'Live audio',
-          artist: 'Empower A/V sync',
-        })
+        mediaSession.metadata = new MediaMetadata(this.nowPlaying)
       }
 
       mediaSession.playbackState = 'playing'

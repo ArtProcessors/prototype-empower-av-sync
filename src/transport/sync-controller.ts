@@ -12,7 +12,6 @@
  */
 import type { Room } from 'trystero'
 
-import type { VideoId } from '../content'
 import { monitorPeerConnection } from '../diagnostics/peer-monitor'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import {
@@ -21,8 +20,9 @@ import {
   type Beat,
   type ClockSample,
 } from '../sync/sync-math'
-import { APP_ID, RELAY_URLS, STRATEGY, loadStrategy } from './config'
+import { RELAY_URLS, STRATEGY, loadStrategy } from './config'
 import { describeIceConfig, getRtcConfig } from './ice-config'
+import { transportConfig } from './transport-config'
 
 /** Which end of the star topology this device is. */
 export type Role = 'screen' | 'follower'
@@ -79,8 +79,12 @@ type Listener = () => void
 
 /** Supplies the screen's live playback position for the next beat. */
 type BeatSource = () => {
-  /** Id of the video the screen is playing. */
-  mediaId: VideoId
+  /**
+   * Id of the media the screen is playing, echoed on every beat. Opaque here —
+   * resolving it to a soundtrack is the follower's business, not the
+   * transport's.
+   */
+  mediaId: string
   /** The screen's `video.currentTime`, in seconds. */
   videoTime: number
   /** Whether the video is playing rather than paused. */
@@ -131,7 +135,7 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
 
   const room: Room = joinRoom(
     {
-      appId: APP_ID,
+      appId: transportConfig().appId,
       password: roomCode,
       rtcConfig,
       // Followers join passive, which makes the star real. Trystero otherwise
@@ -200,7 +204,9 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
   room.onPeerLeave = peerId => {
     // A leave landing ~5 s after an ICE `disconnected` in the log is Trystero's
     // own teardown timer firing, not the network giving up.
-    recordDiagnostic('peer', `LEAVE ${peerId.slice(0, 6)}`)
+    recordDiagnostic('peer', `LEAVE ${peerId.slice(0, 6)}`, {
+      tag: 'peer-leave',
+    })
     stopMonitoring(peerId)
 
     if (peerId === state.screenId && role === 'follower') {

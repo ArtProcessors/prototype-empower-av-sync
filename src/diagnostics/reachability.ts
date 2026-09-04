@@ -17,10 +17,8 @@
  * five-minute sleep burned seven full room rebuilds against a radio that was
  * not listening.
  */
+import { transportConfig } from '../transport/transport-config'
 import { recordDiagnostic } from './session-log'
-
-/** Worker route that answers 204 and nothing else. */
-const PING_PATH = '/api/ping'
 
 /** How often to probe while the page is hidden and the network looks healthy. */
 const PROBE_INTERVAL_MS = 30000
@@ -73,10 +71,13 @@ async function probe(): Promise<void> {
   const startedAt = Date.now()
 
   try {
-    const response = await fetch(`${PING_PATH}?t=${startedAt}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    })
+    const response = await fetch(
+      `${transportConfig().pingPath}?t=${startedAt}`,
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      },
+    )
     const elapsed = Date.now() - startedAt
 
     if (!response.ok) {
