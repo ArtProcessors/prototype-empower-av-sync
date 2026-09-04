@@ -7,15 +7,3 @@ declare module '*.m4a' {
   const src: string
   export default src
 }
-
-interface ImportMetaEnv {
-  /** Matchmaking backend: `worker` (default), `nostr`, `mqtt` or `torrent`. */
-  readonly VITE_TRYSTERO_STRATEGY?: string
-  /** Comma-separated Nostr relay URLs overriding Trystero's defaults. */
-  readonly VITE_NOSTR_RELAYS?: string
-}
-
-interface ImportMeta {
-  /** Build-time environment variables; see {@link ImportMetaEnv}. */
-  readonly env: ImportMetaEnv
-}

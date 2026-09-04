@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { roomCodeFromSearch } from '../core/join-link'
 import { readRejoinRoom } from '../core/rejoin-memory'
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../core/room-code'
-import { STRATEGY } from '../transport/config'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import type { ViewProps } from './view-props'
@@ -26,7 +25,7 @@ export function Landing({ state, session }: ViewProps) {
       <h1>Empower — A/V Sync</h1>
       <p className="muted">
         Fixed screen leader · followers' audio synced to the video clock · over
-        WebRTC ({STRATEGY})
+        WebRTC
       </p>
 
       {state.error && <p className="error">⚠ {state.error}</p>}

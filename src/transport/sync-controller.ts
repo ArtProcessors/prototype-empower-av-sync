@@ -10,7 +10,7 @@
  *    (Cristian's algorithm, keeping the lowest-RTT sample). The actual audio
  *    correction lives in the media layer, driven from this controller's state.
  */
-import type { Room } from 'trystero'
+import { selfId, type Room } from '@trystero-p2p/core'
 
 import { monitorPeerConnection } from '../diagnostics/peer-monitor'
 import { recordDiagnostic } from '../diagnostics/session-log'
@@ -20,9 +20,9 @@ import {
   type Beat,
   type ClockSample,
 } from '../sync/sync-math'
-import { RELAY_URLS, STRATEGY, loadStrategy } from './config'
 import { describeIceConfig, getRtcConfig } from './ice-config'
 import { transportConfig } from './transport-config'
+import { getRelaySockets, joinRoom } from './worker-strategy'
 
 /** Which end of the star topology this device is. */
 export type Role = 'screen' | 'follower'
@@ -127,9 +127,7 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
   // Fetched per join, and therefore per *rejoin* too: a credential that expired
   // during a sleep would otherwise let the watchdog reconnect forever against
   // an ICE config that can no longer allocate a relay candidate.
-  const [{ joinRoom, selfId, getRelaySockets }, rtcConfig] = await Promise.all(
-    [loadStrategy(), getRtcConfig()],
-  )
+  const rtcConfig = await getRtcConfig()
 
   recordDiagnostic('ice', `joining as ${role} — ${describeIceConfig()}`)
 
@@ -146,9 +144,6 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
       // Passive peers refuse each other and dial only an active peer, so a
       // follower connects to the screen and to nothing else.
       passive: role === 'follower',
-      ...(STRATEGY === 'nostr' && RELAY_URLS.length
-        ? { relayConfig: { urls: RELAY_URLS } }
-        : {}),
     },
     roomCode,
   )

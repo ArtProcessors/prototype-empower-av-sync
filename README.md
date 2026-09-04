@@ -370,9 +370,10 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   ([signal-relay.ts](worker/signal-relay.ts)) at `/signal`, served by the same Worker as the
   SPA and `/api/ice` — a stateless Worker cannot hold the WebSockets, hence the DO. It
   replaced free Nostr relays, which rate-limited peer discovery and sat in the path of every
-  join and every reconnect; peering measured 0.8 s against their 1.4–2.2 s. The
-  public strategies are still selectable with `VITE_TRYSTERO_STRATEGY` (`nostr`, `mqtt`,
-  `torrent`) for comparison. ICE is **pinned to Cloudflare TURN, relay-only**
+  join and every reconnect; peering measured 0.8 s against their 1.4–2.2 s. Trystero's public
+  backends have been removed rather than kept as a switch: only the app's own relay retains
+  announces, so selecting one would not be a like-for-like fallback but a quietly slower join
+  path for passive followers. ICE is **pinned to Cloudflare TURN, relay-only**
   (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers replaced): the
   Android connection-stability work needs every peer on the relay, so there is deliberately
   no direct-path or public-STUN fallback to hide behind.

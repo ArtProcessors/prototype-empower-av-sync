@@ -22,13 +22,10 @@
   },
   "dependencies": {
     "@trystero-p2p/core": "~0.25.3",
-    "@trystero-p2p/mqtt": "~0.25.2",
-    "@trystero-p2p/torrent": "~0.25.2",
     "mp4box": "~2.4.1",
     "qrcode": "~1.5.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "trystero": "~0.25.2"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "~5.20260826.1",

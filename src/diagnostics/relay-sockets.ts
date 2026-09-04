@@ -2,16 +2,14 @@
  * Reports the state of the signalling relay sockets.
  *
  * Peering failures are ambiguous without this. A follower that rejoins a room
- * nine times and never finds a peer looks identical whether the relays are
- * throttling it — public Nostr relays do, and one answered
- * "rate-limited: you are noting too much" during testing — or whether the room
- * is simply empty because the screen has gone. One is a signalling problem
- * worth self-hosting a relay to fix; the other is not a problem with this code
- * at all.
+ * nine times and never finds a peer looks identical whether the `/signal`
+ * socket is down — a Worker redeploy, a dropped connection mid-reconnect — or
+ * whether the room is simply empty because the screen has gone. One is a
+ * signalling problem; the other is not a problem with this code at all.
  *
  * Logging socket readiness at the moment a rejoin is decided separates them.
  */
-import { loadStrategy } from '../transport/config'
+import { getRelaySockets } from '../transport/worker-strategy'
 import { recordDiagnostic } from './session-log'
 
 /** `WebSocket.readyState` values, named for the log. */
@@ -41,13 +39,10 @@ type RelayReportContext = 'rejoin'
 
 /**
  * Record how many signalling relays are connected, naming any that are not.
- * Best-effort: never throws, and never blocks the caller's own work.
+ * Best-effort: never throws.
  */
-export async function reportRelaySockets(
-  context: RelayReportContext,
-): Promise<void> {
+export function reportRelaySockets(context: RelayReportContext): void {
   try {
-    const { getRelaySockets } = await loadStrategy()
     const sockets = Object.entries(getRelaySockets() ?? {})
 
     if (!sockets.length) {

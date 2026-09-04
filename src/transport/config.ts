@@ -1,9 +1,6 @@
 /**
- * Transport configuration: Trystero matchmaking strategy + the ICE endpoints
- * every peer connection is pinned to.
- *
- * Defaults to the app's own Worker relay. Swap via the
- * `VITE_TRYSTERO_STRATEGY` environment variable.
+ * Transport configuration: the ICE endpoints every peer connection is pinned
+ * to.
  *
  * **This build is pinned to Cloudflare's TURN service and nothing else.** The
  * point of the exercise is to find out whether a managed relay fixes the
@@ -25,22 +22,19 @@
  * app is close to free — the clock offset is measured with Cristian's algorithm
  * and the lowest-RTT sample wins, so the extra hop is compensated rather than
  * showing up as drift.
- */
-
-/**
- * Matchmaking backend used to find peers in a room.
  *
- * `worker` is this app's own signalling relay, served by the Durable Object in
- * `worker/signal-relay.ts`. It is the default because the public alternatives
- * rate-limit — one Nostr relay answered "you are noting too much" mid-retry
- * during testing — and they sit in the critical path of every join and every
- * recovery. The others remain selectable for comparison.
+ * Matchmaking has no such switch. Peers meet through this app's own signalling
+ * relay (`worker-strategy.ts`, backed by the Durable Object in
+ * `worker/signal-relay.ts`) and through nothing else. Trystero's public
+ * backends were measured against it and lost — they rate-limit, they are
+ * roughly twice as slow to peer, and they sit in the critical path of every
+ * join and every recovery — but the deciding factor is announce retention:
+ * only the app's own relay replays a peer's last announce to whoever
+ * subscribes next, which is what lets a `passive` follower activate on connect
+ * instead of waiting out the screen's 5.3 s announce interval. A public
+ * backend would not be a like-for-like fallback, it would be a quietly slower
+ * join path, so the choice is not offered.
  */
-export type Strategy = 'worker' | 'nostr' | 'mqtt' | 'torrent'
-
-/** Matchmaking backend this build joins rooms with. */
-export const STRATEGY: Strategy =
-  (import.meta.env.VITE_TRYSTERO_STRATEGY as Strategy) || 'worker'
 
 /**
  * The only ICE endpoints this build will use — every Cloudflare transport and
@@ -72,72 +66,3 @@ export const CLOUDFLARE_ICE_URLS = [
  * path for a connection to quietly fall back to.
  */
 export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = 'relay'
-
-/**
- * Optional relay override (see empower-peer-to-peer notes). Leave unset for
- * Trystero's defaults.
- */
-export const RELAY_URLS: string[] = (import.meta.env.VITE_NOSTR_RELAYS || '')
-  .split(',')
-  .map(url => url.trim())
-  .filter(Boolean)
-
-/**
- * Dynamically import the Trystero strategy named by {@link STRATEGY}, so only
- * the selected backend ends up in the bundle.
- */
-export async function loadStrategy(): Promise<{
-  /** Trystero's room-joining entry point for the selected backend. */
-  joinRoom: typeof import('trystero/nostr').joinRoom
-  /** This device's peer id, stable for the page's lifetime. */
-  selfId: string
-  /**
-   * Live signalling sockets, keyed by relay URL. Exposed so the diagnostics
-   * can tell a throttled or unreachable relay apart from a room that simply
-   * has nobody in it — the two are indistinguishable from the peer log alone.
-   */
-  getRelaySockets: () => Record<string, WebSocket>
-}> {
-  switch (STRATEGY) {
-    case 'mqtt': {
-      const mqtt = await import('@trystero-p2p/mqtt')
-
-      return {
-        joinRoom: mqtt.joinRoom,
-        selfId: mqtt.selfId,
-        getRelaySockets: mqtt.getRelaySockets,
-      }
-    }
-    case 'torrent': {
-      const torrent = await import('@trystero-p2p/torrent')
-
-      return {
-        joinRoom: torrent.joinRoom,
-        selfId: torrent.selfId,
-        getRelaySockets: torrent.getRelaySockets,
-      }
-    }
-    case 'nostr': {
-      const nostr = await import('trystero/nostr')
-
-      return {
-        joinRoom: nostr.joinRoom,
-        selfId: nostr.selfId,
-        getRelaySockets: nostr.getRelaySockets,
-      }
-    }
-    case 'worker':
-    default: {
-      const [worker, core] = await Promise.all([
-        import('./worker-strategy'),
-        import('@trystero-p2p/core'),
-      ])
-
-      return {
-        joinRoom: worker.joinRoom as typeof import('trystero/nostr').joinRoom,
-        selfId: core.selfId,
-        getRelaySockets: worker.getRelaySockets,
-      }
-    }
-  }
-}

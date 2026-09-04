@@ -42,8 +42,7 @@ migrate. All logic is client-side in a PWA (Vite + React + TypeScript).
 **Transport** ([sync-controller.ts](src/transport/sync-controller.ts)) — peers meet through
 Trystero (WebRTC data channels), but over this app's **own signalling relay**: a Durable
 Object on the same Worker that serves the SPA ([signal-relay.ts](worker/signal-relay.ts), a
-WebSocket pub/sub hub at `/signal`). The public strategies (`nostr`, `mqtt`, `torrent`)
-remain selectable via `VITE_TRYSTERO_STRATEGY` for comparison. Followers join `passive`, so
+WebSocket pub/sub hub at `/signal`) and through nothing else. Followers join `passive`, so
 they dial the screen and never each other — Trystero otherwise meshes a room, and nothing
 here is ever sent follower to follower. Owning the relay is what makes that affordable: it
 retains each peer's last announce and replays it to whoever subscribes next, so a passive
@@ -285,8 +284,10 @@ screen's 127 MB video for the 15-minute clip.
   discovery now depends on a service this project operates: it uses WebSocket hibernation and
   sits inside the Workers free tier at venue scale, but an outage there is an outage for
   joining — survivable rather than fatal, since the connection reconnects and re-announces on
-  its own and playback never depended on it, but new listeners cannot arrive while it lasts. The public strategies remain selectable via `VITE_TRYSTERO_STRATEGY` for
-  comparison.
+  its own and playback never depended on it, but new listeners cannot arrive while it lasts.
+  Trystero's public backends were removed once the comparison concluded: they were selectable
+  only at build time, so they were never outage insurance, and announce retention means they
+  are no longer equivalent to the app's own relay anyway.
 - **Room codes are the only access control.** The 4-character code doubles as the room
   password; anyone who can reach the signaling network and guess/see a code can join.
   Acceptable for listening to a public soundtrack, but worth being deliberate about.
