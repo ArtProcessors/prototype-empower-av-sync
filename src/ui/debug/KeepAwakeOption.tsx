@@ -1,4 +1,4 @@
-import type { ViewProps } from './view-props'
+import type { ViewProps } from '../view-props'
 
 /**
  * Opt-in checkbox for the Screen Wake Lock. Renders nothing on browsers

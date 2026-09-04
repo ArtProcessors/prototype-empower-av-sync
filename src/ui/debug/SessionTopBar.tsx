@@ -1,4 +1,4 @@
-import type { Role } from '../transport/sync-controller'
+import type { Role } from '../../transport/sync-controller'
 
 /** The room banner and Leave button shown at the top of an active session. */
 export function SessionTopBar({

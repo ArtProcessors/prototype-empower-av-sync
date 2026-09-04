@@ -3,7 +3,7 @@ import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { FollowerStatus } from './FollowerStatus'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import { SessionTopBar } from './SessionTopBar'
-import type { SessionViewProps } from './view-props'
+import type { SessionViewProps } from '../view-props'
 
 /** The listener's screen: live drift from the screen, plus session controls. */
 export function FollowerView({ state, session, transport }: SessionViewProps) {

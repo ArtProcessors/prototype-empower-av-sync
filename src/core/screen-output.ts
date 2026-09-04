@@ -14,6 +14,11 @@
  * this app is for. So the element is created up front, outside the component
  * tree, and {@link DomScreenVideoOutput.mountInto} re-parents that same element
  * into whatever container the view offers.
+ *
+ * Presentation is deliberately left to the host: the element carries a stable
+ * class name and nothing else, so a debug page can letterbox it in a card and
+ * a demo screen can fill the viewport with it, without either fighting inline
+ * styles set here.
  */
 import type { MediaOption } from './media-catalogue'
 
@@ -40,6 +45,44 @@ export interface ScreenVideoOutput {
   readonly durationSec: number
 }
 
+/**
+ * Class the element is built carrying, so a host has something to style it
+ * with from CSS without needing to touch the element at all.
+ *
+ * Added to `classList` rather than assigned, and applied before
+ * {@link DomScreenVideoOptions.configure} runs — a host adding its own classes
+ * should add to `classList` too, since assigning `className` would drop this
+ * one and with it both stylesheets' hold on the element.
+ */
+export const SCREEN_VIDEO_CLASS = 'screen-video'
+
+/** How the host wants the persistent video element set up. */
+export interface DomScreenVideoOptions {
+  /**
+   * Called once with the freshly built element, before it is mounted, sourced
+   * or played. Set anything a `<video>` supports: `controls`, `poster`,
+   * `preload`, `crossOrigin`, `disablePictureInPicture`, extra classes, data
+   * attributes. Keeping a reference to the element for later is fine too —
+   * this is the only place it is handed out before a session exists.
+   *
+   * One callback rather than a list of flags, deliberately. Every flag here
+   * would be the core learning one host's presentation decision, which is
+   * precisely what it is built not to know: a second UI wants different
+   * chrome, not a bigger enum.
+   *
+   * Three properties are load-bearing and should be left alone. `loop`,
+   * because a beat reports the video's duration as a loop length and
+   * followers wrap their audio on it. `muted`, because the leader is the
+   * picture and the followers are the sound — an audible screen is the bug
+   * this whole app exists to avoid. `playsInline`, because without it iOS
+   * takes the video fullscreen and out of the page, away from the QR code
+   * people are trying to scan.
+   *
+   * @param element the video element this session will play through
+   */
+  configure?(element: HTMLVideoElement): void
+}
+
 /** A {@link ScreenVideoOutput} backed by a persistent `<video>` element. */
 export interface DomScreenVideoOutput extends ScreenVideoOutput {
   /** The element itself, for hosts that place it by hand. */
@@ -54,21 +97,26 @@ export interface DomScreenVideoOutput extends ScreenVideoOutput {
 /**
  * Build the screen's persistent video element. Call once, before any gesture:
  * the element has to exist and be reusable by the time someone taps.
+ *
+ * @param options the host's one chance to set the element up — see
+ *   {@link DomScreenVideoOptions.configure}
  */
-export function createDomScreenVideo(): DomScreenVideoOutput {
+export function createDomScreenVideo(
+  options: DomScreenVideoOptions = {},
+): DomScreenVideoOutput {
   const element = document.createElement('video')
 
   element.loop = true
   element.playsInline = true
   element.setAttribute('playsinline', '')
   element.setAttribute('webkit-playsinline', '')
-  element.controls = true
   // The leader (local video) is muted. Only followers can hear the sound.
   element.muted = true
-  element.style.width = '100%'
-  element.style.height = 'auto'
-  element.style.background = '#000'
-  element.style.display = 'block'
+  element.classList.add(SCREEN_VIDEO_CLASS)
+
+  // The host gets the last word: nothing below this line touches
+  // presentation, so a UI is never fighting a default set after it.
+  options.configure?.(element)
 
   return {
     element,

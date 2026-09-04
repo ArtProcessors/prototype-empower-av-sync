@@ -36,6 +36,8 @@ export {
 // Where the screen's video goes.
 export {
   createDomScreenVideo,
+  SCREEN_VIDEO_CLASS,
+  type DomScreenVideoOptions,
   type DomScreenVideoOutput,
   type ScreenVideoOutput,
 } from './screen-output'

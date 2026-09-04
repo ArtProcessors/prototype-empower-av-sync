@@ -1,5 +1,5 @@
-import type { CorrectionInfo } from '../media/audio-sync-controller'
-import { driftClassName, formatSignedDrift } from './drift'
+import type { CorrectionInfo } from '../../media/audio-sync-controller'
+import { driftClassName, formatSignedDrift } from '../drift'
 
 /**
  * What a listener is shown in place of the drift readout while there is

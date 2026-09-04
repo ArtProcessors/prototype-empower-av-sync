@@ -5,8 +5,8 @@ import {
   diagnosticEvents,
   formatDiagnostics,
   subscribeDiagnostics,
-} from '../diagnostics/session-log'
-import { summariseDiagnostics } from '../diagnostics/summary'
+} from '../../diagnostics/session-log'
+import { summariseDiagnostics } from '../../diagnostics/summary'
 
 /** How many of the most recent events the panel renders. */
 const VISIBLE_EVENTS = 60

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
-import { driftClassName, formatSignedDrift } from './drift'
-import type { SessionViewProps } from './view-props'
+import { driftClassName, formatSignedDrift } from '../drift'
+import type { SessionViewProps } from '../view-props'
 
 function DebugRow({ label, value }: { label: string; value: ReactNode }) {
   return (

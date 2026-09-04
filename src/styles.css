@@ -130,6 +130,15 @@ select {
   overflow: hidden;
   margin: 10px 0;
 }
+/* The persistent screen video carries no styling of its own — see
+   core/screen-output.ts — so each host sizes it. Letterboxed here. */
+.video-wrap .screen-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
 .share {
   display: flex;
   gap: 16px;
@@ -250,4 +259,321 @@ select {
 .diag-msg {
   flex: 1;
   word-break: break-word;
+}
+
+/* =========================================================================
+   Demo UI — the consumer-facing half (src/ui/demo).
+
+   Everything above styles the debug instrument; everything below styles what
+   a visitor sees. They share the palette and nothing else, and every rule
+   here is scoped under `.demo` so neither can drift into the other.
+   ========================================================================= */
+.demo {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #0b0b0c;
+  color: #eee;
+}
+
+/* Both single-column views: content centred in the space that is left once
+   the footer has taken what it needs. */
+.demo-start,
+.demo-follower {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding-inline: max(20px, env(safe-area-inset-left))
+    max(20px, env(safe-area-inset-right));
+  padding-block-start: max(16px, env(safe-area-inset-top));
+}
+.demo-center {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  min-block-size: 0;
+  padding-block: 24px;
+  text-align: center;
+}
+
+/* -- The one button ------------------------------------------------------ */
+.demo-action {
+  inline-size: min(62vw, 15rem);
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, #4478ea, #2145a8);
+  color: #fff;
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 14px 44px rgb(42 91 215 / 0.35);
+  transition: transform 120ms ease;
+}
+.demo-action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.demo-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.demo-action:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 6px;
+}
+
+/* -- Quiet controls ------------------------------------------------------ */
+.demo-ghost {
+  margin: 0;
+  padding: 10px 16px;
+  /* WCAG 2.5.8: a touch target that content can grow but not shrink. */
+  min-block-size: 44px;
+  border: 1px solid #303034;
+  border-radius: 999px;
+  background: transparent;
+  color: #9a9a9e;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.demo-ghost:hover:not(:disabled) {
+  border-color: #55555c;
+  color: #eee;
+}
+.demo-ghost:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+/* Promoted once a problem has stopped looking transient. */
+.demo-ghost-urgent {
+  border-color: #2a5bd7;
+  background: #2a5bd7;
+  color: #fff;
+}
+
+.demo-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-block: 14px;
+  padding-block-end: max(14px, env(safe-area-inset-bottom));
+  border-top: 1px solid #1c1c1e;
+}
+.demo-room {
+  color: #7a7a7e;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* -- Copy ---------------------------------------------------------------- */
+.demo-lede {
+  margin: 0;
+  max-inline-size: 24rem;
+  color: #9a9a9e;
+  text-wrap: pretty;
+}
+.demo-hint {
+  margin: 0;
+  color: #7a7a7e;
+  font-size: 0.9rem;
+}
+.demo-hint-urgent {
+  color: #fbbf24;
+}
+.demo-error {
+  margin: 0;
+  max-inline-size: 26rem;
+  padding: 10px 14px;
+  border: 1px solid #6b2a2a;
+  border-radius: 10px;
+  background: #2a1414;
+  color: #f8a1a1;
+  text-wrap: pretty;
+}
+.demo-field {
+  display: grid;
+  gap: 6px;
+  inline-size: min(100%, 18rem);
+  text-align: start;
+}
+.demo-field-label {
+  color: #7a7a7e;
+  font-size: 0.85rem;
+}
+
+/* -- The listener's status ring ------------------------------------------ */
+.demo-status {
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+}
+.demo-indicator {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: min(52vw, 12rem);
+  aspect-ratio: 1;
+  border: 3px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 50%;
+  color: #6b7280;
+}
+/* Decorative: the live region beside it already says all of this. */
+.demo-indicator::after {
+  font-size: 3rem;
+  line-height: 1;
+}
+.demo-indicator[data-tone='busy'] {
+  color: #8ab4ff;
+}
+.demo-indicator[data-tone='good'] {
+  color: #4ade80;
+}
+.demo-indicator[data-tone='good']::after {
+  content: '✓';
+}
+.demo-indicator[data-tone='warn'] {
+  color: #fbbf24;
+}
+.demo-indicator[data-tone='warn']::after {
+  content: '!';
+}
+.demo-indicator[data-tone='error'] {
+  color: #f87171;
+}
+.demo-indicator[data-tone='error']::after {
+  content: '✕';
+}
+/* The only tone that spins: something is genuinely in flight. */
+.demo-indicator[data-tone='busy']::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 3px solid transparent;
+  border-top-color: currentColor;
+  border-radius: inherit;
+  animation: demo-spin 1.1s linear infinite;
+}
+@keyframes demo-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.demo-headline {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.demo-detail {
+  margin: 6px 0 0;
+  max-inline-size: 26rem;
+  color: #9a9a9e;
+  font-size: 0.95rem;
+  text-wrap: pretty;
+}
+
+/* -- The screen: video edge to edge, QR over it -------------------------- */
+.demo-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.demo-stage {
+  inline-size: 100%;
+  block-size: 100%;
+  background: #000;
+}
+.demo-stage .screen-video {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.demo-qr {
+  position: absolute;
+  inset-block-end: max(24px, env(safe-area-inset-bottom));
+  inset-inline-end: max(24px, env(safe-area-inset-right));
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.94);
+  color: #111;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+/* Generated at QR_RESOLUTION and scaled down here, so it stays crisp. */
+.demo-qr img {
+  display: block;
+  inline-size: clamp(120px, 15vmin, 240px);
+  block-size: auto;
+  border-radius: 6px;
+}
+.demo-qr-caption {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.demo-qr-code {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  /* Offsets the trailing letter-space, which would otherwise sit the text
+     half a gap left of centre. */
+  text-indent: 0.2em;
+  letter-spacing: 0.2em;
+}
+/* Opposite corner from the QR and below the controls, so it can never land on
+   either however narrow the display is. */
+.demo-screen-alert {
+  position: absolute;
+  inset-block-end: max(24px, env(safe-area-inset-bottom));
+  inset-inline-start: max(24px, env(safe-area-inset-left));
+  max-inline-size: min(30rem, 45vw);
+  margin: 0;
+  padding: 10px 16px;
+  border: 1px solid #6b5a1e;
+  border-radius: 14px;
+  background: rgb(43 36 16 / 0.94);
+  color: #f0d68a;
+  text-wrap: pretty;
+}
+/* Reachable but never part of the picture: barely there until pointed at or
+   tabbed into. */
+.demo-screen-controls {
+  position: absolute;
+  inset-block-start: max(16px, env(safe-area-inset-top));
+  inset-inline-end: max(16px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.5);
+  opacity: 0.18;
+  transition: opacity 180ms ease;
+}
+.demo-screen-controls:hover,
+.demo-screen-controls:focus-within {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-action,
+  .demo-screen-controls {
+    transition: none;
+  }
+  /* Still moves — it is the only thing saying "not stuck" — but slowly. */
+  .demo-indicator[data-tone='busy']::before {
+    animation-duration: 4s;
+  }
 }

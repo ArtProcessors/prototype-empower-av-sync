@@ -1,10 +1,11 @@
-import { joinUrl } from '../core/join-link'
+import { joinUrl } from '../../core/join-link'
+import { withUiMode } from '../ui-mode'
 import { DebugPanel } from './DebugPanel'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
-import { QRCode } from './QRCode'
+import { QRCode } from '../QRCode'
 import { SessionTopBar } from './SessionTopBar'
-import type { SessionViewProps } from './view-props'
+import type { SessionViewProps } from '../view-props'
 
 /** The leader's screen: the looping video plus the code listeners join with. */
 export function ScreenView({
@@ -16,7 +17,10 @@ export function ScreenView({
   /** Ref callback that mounts the persistent screen video into a container. */
   mountScreenVideo: (container: HTMLElement | null) => void
 }) {
-  const listenerUrl = joinUrl(transport.roomCode)
+  // Marked as debug so a phone scanning this QR lands in the debug follower
+  // rather than the consumer demo — the two are different pixels over the
+  // same session, and a sleep test wants the instrumented one.
+  const listenerUrl = withUiMode(joinUrl(transport.roomCode), 'debug')
 
   return (
     <main className="wrap">

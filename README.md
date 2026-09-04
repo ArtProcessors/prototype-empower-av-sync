@@ -49,16 +49,38 @@ To rehearse exactly what deploys — **one origin** serving the app, `/signal` a
 service worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is
 the only local mode with production's topology.
 
-## Try it
+## Two UIs
 
-1. On the display device, open the app, **pick a video** from the dropdown, and tap
-   **📺 Be the screen** (starts the looping video and shows a room code + QR).
-2. On phones, scan the QR / enter the code and tap **🎧 Join** (the tap unlocks audio on iOS).
-   Put on headphones — the phone's audio locks to the video, and a live **drift meter**
-   shows how far off it is (ms).
+The same session, `src/core`, is rendered by two hosts. Which one you get is a query
+parameter, read once per page load:
+
+| URL         | UI                                                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/`         | **Demo** (`src/ui/demo/`) — what a visitor sees. Video edge to edge with the join QR over it; on a phone, one button and one line of status.                       |
+| `/?debug=1` | **Debug** (`src/ui/debug/`) — the instrument this spike was built with: video picker, room-code entry, live drift readout, sync-state rows and the connection log. |
+
+A debug screen's QR carries `&debug=1`, so a phone scanning it lands in the debug follower;
+a demo screen's QR carries only the room. Nothing in `src/core` knows either exists.
+
+## Try it — demo
+
+1. On the display device, open the app, **pick a video**, and tap **Start**. The video goes
+   full-bleed and a QR card sits in the bottom-right corner. The operator controls (listener
+   count, Refresh, Stop) sit top-right at low opacity and come up on hover or focus.
+2. On phones, scan the QR and tap **Listen** (the tap unlocks audio on iOS). Put on
+   headphones. The ring reports what the session is doing — downloading the soundtrack,
+   reconnecting, in sync — and **Refresh** is always in the footer, promoted after 20 seconds
+   of unresolved trouble.
 
 The test clip has a **per-second flash + click** and a sweeping bar, so drift is instantly
 visible and audible: the click in your headphones should land on the flash on screen.
+
+## Try it — debug
+
+1. Open `/?debug=1` on the display device, **pick a video** from the dropdown, and tap
+   **📺 Be the screen** (starts the looping video and shows a room code + QR).
+2. On phones, scan the QR / enter the code and tap **🎧 Join**. Put on headphones — a live
+   **drift meter** shows how far off the phone is (ms).
 
 The debug panel's `engine` row shows which output path is live (`element`, `buffer`, `stream`,
 or `syncing` while a long soundtrack's first window loads).
@@ -161,7 +183,7 @@ different UI in another project without being rewritten.
 | `src/media/`            | The follower's corrector and its three output paths (`audio-sync-controller.ts`, `buffer-audio-engine.ts`, `streaming-buffer-engine.ts`).                                                                                               |
 | `src/diagnostics/`      | The session log and the monitors that feed it.                                                                                                                                                                                          |
 | `src/content/`          | _This app's_ media — the catalogue is handed to the core, not imported by it.                                                                                                                                                           |
-| `src/ui/`, `src/hooks/` | The React host. `useSync()` is ~35 lines: it subscribes to the session's snapshot and hands it to the views.                                                                                                                            |
+| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the session's snapshot; `ui/demo/` and `ui/debug/` are two sets of views over it, picked by `ui/ui-mode.ts`.                                                                                  |
 | `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig.                                                                                                                                                          |
 
 ### Reusing the core
@@ -178,14 +200,18 @@ await session.join('K7QF') // inside a user gesture
 ```
 
 `createSyncSession` needs a `MediaCatalogue` and nothing else; the browser defaults cover the
-rest. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
+rest. The screen's video is a port — pass your own `ScreenVideoOutput` to play through
+something that is not a DOM element. A React host instead configures the built-in one through
+`useSync({ screenVideo: { configure } })`, which hands over the `<video>` once, before any
+gesture; `loop`, `muted` and `playsInline` are load-bearing and everything else is the
+host's. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
 Trystero app id and the Worker routes are `configureTransport()` in `src/transport/`. Both
 default to what this app uses, and nothing here calls either.
 
 ## Diagnostics
 
-Both roles render a **Debug — connection log** below the main UI
-([DiagnosticsPanel.tsx](src/ui/DiagnosticsPanel.tsx)) — the instrument the connection-stability
+Both roles render a **Debug — connection log** below the main UI in the debug UI
+([DiagnosticsPanel.tsx](src/ui/debug/DiagnosticsPanel.tsx)) — the instrument the connection-stability
 work was done with. It carries a summary line (freezes · peer leaves · rejoins · longest timer
 stall) and a one-tap **Copy log**, and the buffer is mirrored to `sessionStorage` so a log
 survives the browser discarding the tab. Events are tagged `beat`, `ice`, `net`, `page`,

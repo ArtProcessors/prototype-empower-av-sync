@@ -11,10 +11,28 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { CONTENT_CATALOGUE } from '../content'
 import {
   createDomScreenVideo,
+  type DomScreenVideoOptions,
   type DomScreenVideoOutput,
 } from '../core/screen-output'
 import { createSyncSession, type SyncSession } from '../core/session'
 import type { SyncSessionState } from '../core/session-state'
+
+/**
+ * What a host supplies when it binds the page's session.
+ *
+ * This is the configuration seam for a React host: the parts of the session
+ * that depend on which UI is rendering, gathered where the UI can reach them.
+ * A host that is not React — or not a DOM at all — skips this file and calls
+ * {@link createSyncSession} directly, handing it its own `ScreenVideoOutput`.
+ */
+export interface UseSyncOptions {
+  /**
+   * How to set up the persistent `<video>` the screen plays through. The one
+   * hook a UI needs to make that element its own — see
+   * {@link DomScreenVideoOptions.configure}.
+   */
+  screenVideo?: DomScreenVideoOptions
+}
 
 /** The session, its current state, and the one DOM detail React has to place. */
 export interface SyncBinding {
@@ -39,12 +57,17 @@ export interface SyncBinding {
  * The DOM video output is built here rather than inside the session because
  * knowing how to parent an `HTMLVideoElement` is this host's job, not the
  * core's — the core only needs something it can play and read a clock from.
+ *
+ * Its setup arrives with the first call and is spent there: the element cannot
+ * be rebuilt, so it cannot be reconfigured either. Anything a UI wants to say
+ * about that element, it says once, up front — which is what makes the caller
+ * a single root, not any component that fancies a video.
  */
 let page: { session: SyncSession; video: DomScreenVideoOutput } | null = null
 
-function sessionForPage() {
+function sessionForPage(options: UseSyncOptions) {
   if (!page) {
-    const video = createDomScreenVideo()
+    const video = createDomScreenVideo(options.screenVideo)
 
     page = {
       session: createSyncSession({
@@ -59,9 +82,19 @@ function sessionForPage() {
   return page
 }
 
-/** Subscribe the component tree to the A/V sync session. */
-export function useSync(): SyncBinding {
-  const { session, video } = sessionForPage()
+/**
+ * Subscribe the component tree to the A/V sync session, building it on the
+ * first call.
+ *
+ * `options` are consumed by that first call and ignored by every one after
+ * it — there is one session and one video element per page, and neither can be
+ * replaced once a gesture may have landed on them. In practice that means one
+ * caller, at the root, passing values it worked out before rendering.
+ *
+ * @param options how this host wants the page's session built
+ */
+export function useSync(options: UseSyncOptions = {}): SyncBinding {
+  const { session, video } = sessionForPage(options)
   // `subscribe` and `getState` are properties of one long-lived object, so
   // their identities never change and React never re-subscribes. `getState`
   // returns the same snapshot until the session replaces it, which is what

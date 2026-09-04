@@ -1,11 +1,11 @@
 import { useState } from 'react'
 
-import { roomCodeFromSearch } from '../core/join-link'
-import { readRejoinRoom } from '../core/rejoin-memory'
-import { isRoomCodeAcceptable, maxRoomCodeLength } from '../core/room-code'
+import { roomCodeFromSearch } from '../../core/join-link'
+import { readRejoinRoom } from '../../core/rejoin-memory'
+import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
-import type { ViewProps } from './view-props'
+import type { ViewProps } from '../view-props'
 
 /**
  * The entry screen: lead a room as the screen, or join an existing one as a
