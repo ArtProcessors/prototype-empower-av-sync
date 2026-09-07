@@ -25,11 +25,7 @@ const UI_MODE = currentUiMode()
 const SCREEN_VIDEO: Record<UiMode, DomScreenVideoOptions> = {
   // Nothing over the picture. A room full of people is looking at this, and
   // the only overlay it should have is the QR code the demo view draws.
-  demo: {
-    configure: element => {
-      element.controls = true
-    },
-  },
+  demo: {},
 
   // Native controls, to scrub and pause with while testing. The debug screen
   // renders the element letterboxed in a card, where chrome costs nothing.

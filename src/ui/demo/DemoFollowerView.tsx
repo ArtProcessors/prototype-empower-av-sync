@@ -98,7 +98,7 @@ export function DemoFollowerView({
     <main className="demo demo-follower">
       <div className="demo-center">
         {started ? (
-          <DemoStatusDisplay status={status} />
+          <DemoStatusDisplay status={status} waveform={session.waveform} />
         ) : (
           <>
             {status.tone === 'error' && (

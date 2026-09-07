@@ -23,6 +23,7 @@ import { startReachabilityProbe } from '../diagnostics/reachability'
 import { reportRelaySockets } from '../diagnostics/relay-sockets'
 import { recordDiagnostic } from '../diagnostics/session-log'
 import { preflightTurn } from '../diagnostics/turn-preflight'
+import type { AudioWaveform } from '../media/audio-waveform'
 import {
   AudioSyncController,
   type NowPlayingInfo,
@@ -92,6 +93,16 @@ export interface SyncSession {
   setKeepAwake(on: boolean): void
   /** The screen's video output, for a host that needs to display it. */
   readonly screenVideo: ScreenVideoOutput
+  /**
+   * Live samples of the follower's audio output, for a host that wants to
+   * draw it.
+   *
+   * Deliberately not part of the snapshot: it changes at audio rate, and a
+   * host reads it from inside its own animation loop rather than being
+   * re-rendered by it. Stable for the session's lifetime, and safe to read on
+   * a screen or before joining — it simply reports nothing to read.
+   */
+  readonly waveform: AudioWaveform
   /**
    * Release everything this session holds. The browser host never calls it —
    * the page outlives the session — but a host that mounts and unmounts one
@@ -350,6 +361,7 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
   return {
     screenVideo,
+    waveform: audio.waveform,
 
     getState: () => state,
 

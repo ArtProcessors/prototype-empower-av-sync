@@ -207,6 +207,11 @@ export class BufferAudioEngine implements FollowerAudioEngine {
     return this.streamDest != null
   }
 
+  /** The node every sample this engine plays passes through. */
+  get outputTap(): AudioNode | null {
+    return this.masterGain
+  }
+
   /** Where the graph's audio goes: the keep-alive stream, else the speakers. */
   private outputNode(): AudioNode {
     return this.streamDest ?? this.ctx!.destination

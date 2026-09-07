@@ -88,6 +88,7 @@ export type {
   CorrectionMode,
   NowPlayingInfo,
 } from '../media/audio-sync-controller'
+export type { AudioWaveform } from '../media/audio-waveform'
 export type { Beat } from '../sync/sync-math'
 
 // The diagnostics log, which is already a framework-agnostic store.

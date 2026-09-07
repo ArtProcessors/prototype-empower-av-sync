@@ -470,6 +470,11 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     return this.streamDest != null
   }
 
+  /** The node every sample this engine plays passes through. */
+  get outputTap(): AudioNode | null {
+    return this.masterGain
+  }
+
   /** Where sources connect: the master gain, else the speakers directly. */
   private outputNode(): AudioNode {
     return this.masterGain ?? this.ctx!.destination

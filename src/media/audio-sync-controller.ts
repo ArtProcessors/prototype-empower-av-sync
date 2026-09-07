@@ -18,6 +18,7 @@
  * any await).
  */
 import { signedDrift, correctionRate } from '../sync/sync-math'
+import { createAudioWaveform, type AudioWaveform } from './audio-waveform'
 import { BufferAudioEngine } from './buffer-audio-engine'
 import { StreamingBufferEngine } from './streaming-buffer-engine'
 
@@ -110,6 +111,17 @@ export interface FollowerAudioEngine {
   /** Whether the lock-screen keep-alive sink is wired up. */
   readonly backgroundKeepAlive: boolean
   /**
+   * The node every sample this engine plays passes through, for a host that
+   * wants to analyse or draw the output. `null` until the graph is built.
+   *
+   * The master gain rather than a speaker leg, so one node covers every
+   * engine whatever its output mix looks like. A tap reads that gain's
+   * *output*, which means it follows the de-click fades and the silent cold
+   * convergence — a visualiser on it shows what the listener can actually
+   * hear, and rests when the engine is deliberately quiet.
+   */
+  readonly outputTap: AudioNode | null
+  /**
    * Called when the page is backgrounded / about to lock. Engines whose
    * playback needs the (soon-to-be-throttled) correction timer to keep going
    * should schedule enough audio ahead to survive the lock; those that free-run
@@ -189,6 +201,12 @@ export class AudioSyncController {
 
   /** What this device shows on its lock screen while audio is playing. */
   private readonly nowPlaying: NowPlayingInfo
+  /**
+   * Live samples of whatever is currently playing, for a host that draws the
+   * audio. Stable for this controller's lifetime and follows the output path
+   * across engine swaps by itself; costs nothing until something reads it.
+   */
+  readonly waveform: AudioWaveform = createAudioWaveform(() => this.outputTap)
 
   /**
    * Build the fallback <audio> element and the engines this platform can
@@ -353,6 +371,22 @@ export class AudioSyncController {
   /** Whether the lock-screen keep-alive sink is active. */
   get backgroundKeepAlive(): boolean {
     return this.engineActive && (this.engine?.backgroundKeepAlive ?? false)
+  }
+
+  /**
+   * The node the live output path passes through, or `null` when there is no
+   * graph to tap.
+   *
+   * Mirrors {@link engineKind}: an active engine owns the output, otherwise
+   * the `<audio>` element does — and that only has a graph when it was routed
+   * through Web Audio, which on iOS it never is.
+   */
+  private get outputTap(): AudioNode | null {
+    if (this.engineActive) {
+      return this.engine?.outputTap ?? null
+    }
+
+    return this.sourceNode
   }
 
   /** Which output path is live — for the debug panel. */

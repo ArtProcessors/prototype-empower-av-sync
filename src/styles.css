@@ -434,7 +434,9 @@ select {
 .demo-indicator[data-tone='good'] {
   color: #4ade80;
 }
-.demo-indicator[data-tone='good']::after {
+/* The still-life fallback: the check mark stands in only when the live ring is
+   not there to draw, i.e. under `prefers-reduced-motion`. */
+.demo-indicator[data-tone='good']:not(:has(.demo-ring))::after {
   content: '✓';
 }
 .demo-indicator[data-tone='warn'] {
@@ -449,6 +451,19 @@ select {
 .demo-indicator[data-tone='error']::after {
   content: '✕';
 }
+/* The live ring draws its own resting circle, so the border would double it.
+   Kept as a transparent border rather than removed, so the box the canvas
+   sizes itself against does not change with the tone. */
+.demo-indicator:has(.demo-ring) {
+  border-color: transparent;
+}
+.demo-ring {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
 /* The only tone that spins: something is genuinely in flight. */
 .demo-indicator[data-tone='busy']::before {
   content: '';

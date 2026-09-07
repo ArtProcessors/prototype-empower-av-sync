@@ -204,7 +204,12 @@ rest. The screen's video is a port — pass your own `ScreenVideoOutput` to play
 something that is not a DOM element. A React host instead configures the built-in one through
 `useSync({ screenVideo: { configure } })`, which hands over the `<video>` once, before any
 gesture; `loop`, `muted` and `playsInline` are load-bearing and everything else is the
-host's. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
+host's.
+
+Followers expose their audio too: `session.waveform` is a pull-based read of the samples
+actually leaving the device (`AudioWaveform`), for a host that wants to draw them. It is
+deliberately not part of the snapshot — a host reads it from inside its own animation loop, so
+redrawing at display rate never re-renders anything. The demo listener's ring is built on it. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
 Trystero app id and the Worker routes are `configureTransport()` in `src/transport/`. Both
 default to what this app uses, and nothing here calls either.
 
