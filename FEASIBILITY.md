@@ -66,23 +66,28 @@ runs a ~15 Hz loop: extrapolate the screen's current position
 
 **Three audio engines**, selected per _source_ and per platform
 ([audio-sync-controller.ts](src/media/audio-sync-controller.ts)). Content entries carry a
-`streaming` flag; `engineFor()` resolves it as: streaming source + WebCodecs → streaming
-engine; else iOS → buffer engine; else element engine. The element path is also the universal
-fallback if an engine fails to load.
+`streaming` flag; `engineFor()` resolves it as: streaming source → streaming engine (or
+nothing, if `AudioDecoder` is missing); else iOS → buffer engine; else element engine. The
+element path is also the universal fallback if an engine fails to load.
 
 - **Element engine (Android/desktop, short non-streaming content):** a streaming `<audio>`
   element routed through Web Audio. Inside a ±70 ms deadband it holds rate 1; small drifts
   are closed by nudging `playbackRate` (0.97–1.03, pitch preserved — inaudible); drifts
   > 0.6 s hard-seek, with an 8 s cooldown and settle window so seeks stay rare.
-- **Buffer engine (iOS, short content)**
+- **Buffer engine (iOS)**
   ([buffer-audio-engine.ts](src/media/buffer-audio-engine.ts)): Safari's media-element
   pipeline stalls > 1 s on every seek (and spontaneously mid-playback) and ignores fine
   `playbackRate` writes, which defeated element-side correction. Instead the soundtrack is
   fetched and decoded **whole** to an `AudioBuffer` and played on the **AudioContext clock**:
   repositioning is a sample-accurate source-node swap (no stall), rate nudges (0.98–1.02) are
   honoured as an AudioParam, and drift > 0.25 s restarts at the live target. While
-  downloading/decoding the follower stays silent and reports "syncing".
-- **Streaming engine (any platform, long content — the path both real assets now use)**
+  downloading/decoding the follower stays silent and reports "syncing". This is **not** a
+  short-content optimisation the streaming engine could absorb: `AudioDecoder` does not exist
+  on iOS below Safari 26, so on almost every iPhone in use this is the only engine there is —
+  for content of any length. At ~23 MB/min of decoded float32 PCM that is ~337 MB for the
+  15-minute asset and ~900 MB for the 45-minute one, and **both are confirmed playing on an
+  iPhone on iOS 18.7**.
+- **Streaming engine (long content, where `AudioDecoder` exists)**
   ([streaming-buffer-engine.ts](src/media/streaming-buffer-engine.ts)): whole-file decode
   costs **~21 MB of PCM per minute** of stereo 44.1 kHz audio, so the 45-minute asset would
   need ~950 MB — untenable on a phone. This engine keeps memory flat by decoding only a
@@ -92,10 +97,11 @@ fallback if an engine fails to load.
   with **WebCodecs `AudioDecoder`** into a 60 s PCM buffer (~21 MB). Windows advance in 45 s
   steps (15 s overlap) and the next is prefetched 30 s before the current runs out; the slide
   is a de-clicked reposition into the overlap, so it's seamless and carries the corrector's
-  rate and drift EMA across. Inside a window it _is_ the buffer engine — same AudioContext-clock
-  scheduling, same correction constants, same mute-switch-bypassing stream sink. Requires
-  AAC-LC (`mp4a.40.*`), a faststart MP4, HTTP Range and CORS; anything else falls back via
-  `onLoadFailed`.
+  rate and drift EMA across. A track that fits in a single window has that window **looped on
+  the audio thread**, so there is no seam and no per-lap restart. Requires AAC-LC
+  (`mp4a.40.*`), a faststart MP4, HTTP Range and CORS; anything else falls back via
+  `onLoadFailed`. Range responses that come back `200` instead of `206` — which is what
+  Workbox's precache route does — are sliced rather than trusted as-is.
 
 **Automatic output-latency compensation** — what you hear trails the element/context clock
 by the device's output latency (~100–300 ms on iOS; Bluetooth adds more). This is measured
@@ -242,14 +248,27 @@ screen's 127 MB video for the 15-minute clip.
   service worker's `audio`/`video` runtime-cache route, so they hit the network (or the
   browser's HTTP cache) for the whole session. **Long content is not offline-capable**; a
   network drop mid-session eventually starves the next window.
-- **A brief dropout at the loop wrap on streaming sources.** Nothing is decoded across the
+- **A brief dropout at the loop wrap on multi-window sources.** Nothing is decoded across the
   seam — the last window clamps to the end of the file, so when the target wraps to 0 the
   follower reports "syncing" until a fresh window fetches and decodes (order of a second or
-  two). Acceptable on a 45-minute loop; conspicuous on a short one.
-- **WebCodecs is a hard requirement for the memory-safe path.** iOS 16.4+ / Chromium only.
-  Worse, when `AudioDecoder` is absent the fallback for a long source on iOS is the
-  **whole-file buffer engine** — i.e. exactly the ~950 MB decode the streaming engine exists to
-  avoid. That's a silent trap, not a graceful degradation.
+  two). Acceptable on a 45-minute loop. Tracks short enough for one window no longer have this
+  at all: the window loops on the audio thread (measured 1–7 ms drift across a wrap).
+- **On iOS below Safari 26 there is no memory-safe path, and nobody knows where the ceiling
+  is.** Safari only shipped WebCodecs _audio_ (`AudioDecoder`) in **26.0** — 16.4 through 18.7
+  had the video interfaces alone. Those devices use the whole-file buffer engine whatever the
+  `streaming` flag says, at ~23 MB/min of decoded float32 PCM: ~337 MB for the 15-minute asset,
+  ~900 MB for the 45-minute one. Both **play** on an iPhone on iOS 18.7, so the "~950 MB is
+  untenable on a phone" line elsewhere in this document is arithmetic that has been contradicted
+  by the only measurement anyone has taken.
+
+  A size cap was implemented here and then removed: it refused the 45-minute asset on a device
+  that plays it. Guessing a ceiling low enough to be safe means excluding content that works,
+  and there is no signal to guess from — Safari's per-tab budget is not readable from JS. What
+  exists instead is instrumentation: every whole-file decode records its measured size under
+  the `audio` diagnostic category, and that log is mirrored to `sessionStorage`, so a device
+  that _is_ killed still reports how much it was holding. Collect that across the devices an
+  installation must support before deciding whether a cap is needed at all.
+
 - **Narrow input format.** AAC-LC only, sample rate must be in the AAC table, `moov` must be
   within the first 24 MB (faststart), and the origin must honour Range with CORS. The
   `AudioSpecificConfig` is hand-built from two bytes.
@@ -389,7 +408,7 @@ Scope boundaries of the current design (as opposed to defects):
   no longer a nice-to-have — the build forces every connection through it — so the open
   questions are its cost at venue scale, whether ports 53/80/443 get through the venue's
   filtering, and Range-fetch behaviour behind a caching proxy.
-- **Device breadth.** Android fragmentation, older iPhones, iOS < 16.4 (where the
+- **Device breadth.** Android fragmentation, older iPhones, iOS below Safari 26 (where the
   long-content fallback is the memory trap above), Bluetooth codecs with extreme latency
   (some exceed the 0.5 s measurement clamp).
 - **Perceptual validation.** The drift meter says single-digit ms; a blind "does it feel
@@ -433,8 +452,15 @@ Scope boundaries of the current design (as opposed to defects):
    whole duration. Either accept that and provision the CDN accordingly, or add a
    service-worker route that caches window ranges (and pre-warms them) so a dropout doesn't
    starve playback.
-5. **Close the WebCodecs gap explicitly.** Detect absence and refuse (or cap) long content on
-   that device, rather than silently routing to a whole-file decode that will be killed.
+5. **Find the iOS whole-file ceiling by measuring it, on the devices that matter.** Long
+   content on pre-26 iOS goes through a whole-file decode — ~900 MB for the 45-minute asset —
+   and it works on an iPhone on iOS 18.7. Whether it works on the oldest device an installation
+   must support is unknown, and a guessed cap was tried and removed for refusing content that
+   plays. The `audio` diagnostic category now reports each decode's measured size and survives
+   a tab discard, so this is answerable with a phone and a copy log rather than arithmetic. If
+   the answer turns out to be "no" on hardware that matters, the path is **`ManagedMediaSource`**
+   (iOS 17+): a windowed, memory-flat audio path needing no WebCodecs. Real work; scope it
+   before promising iOS long-form.
 6. **The free-relay dependency is gone — now budget the paid one.** Signalling is self-hosted
    (Durable Object) and relaying goes through Cloudflare TURN on the project's own key. What
    remains is operational: rate-limit `/api/ice` before it is public (an open endpoint mints

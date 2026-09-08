@@ -157,18 +157,28 @@ real content from remote hosting instead (see [Videos](#videos--adding-your-own)
   target — chosen per source (`streaming` flag) and per platform:
   - **Element (Android/desktop, short content):** an `<audio>` element routed through Web
     Audio — small drifts close by **nudging `playbackRate`** (pitch preserved, 0.97–1.03),
-    large drifts hard-seek. Also the fallback if either engine below fails to load.
-  - **Buffer (iOS, short content):** Safari's media-element pipeline stalls >1 s on every
-    seek, so the follower decodes the **whole** soundtrack and plays the `AudioBuffer` on the
-    AudioContext clock instead — repositioning is a sample-accurate source-node swap (no
-    stall) and rate nudges are subtler (0.98–1.02).
-  - **Stream (any platform, long content):** whole-file decode costs **~21 MB of PCM per
-    minute**, so a 45-minute track would need ~950 MB. This engine parses only the `moov`
-    (via `mp4box`), keeps a sample table of byte offsets/timing, then range-fetches and
+    large drifts hard-seek. Also the fallback if either engine below fails to load, and how
+    long content plays off iOS when WebCodecs audio is missing.
+  - **Buffer (iOS):** Safari's media-element pipeline stalls >1 s on every seek and ignores
+    fine `playbackRate` writes, so element-side correction is unworkable there. The follower
+    decodes the **whole** soundtrack and plays the `AudioBuffer` on the AudioContext clock —
+    repositioning is a sample-accurate source-node swap (no stall) and rate nudges are subtler
+    (0.98–1.02). Costs **~21 MB of PCM per minute**, so it is only viable for short content.
+  - **Stream (long content, where WebCodecs audio exists):** parses only the `moov` (via
+    `mp4box`), keeps a sample table of byte offsets/timing, then range-fetches and
     **WebCodecs-decodes a 60 s window** around the playhead, sliding it in 45 s steps
     (prefetched 30 s early, swapped seamlessly inside the 15 s overlap). Memory stays flat in
-    track length. Inside a window it behaves exactly like the buffer engine. Needs
-    **WebCodecs** (iOS 16.4+), AAC-LC, a faststart MP4, and HTTP Range + CORS.
+    track length, where the buffer engine's ~21 MB/min would need ~950 MB for a 45-minute
+    track. A track that fits in one window has that window **looped on the audio thread**.
+    Needs AAC-LC, a faststart MP4, HTTP Range + CORS, and `AudioDecoder` — see below.
+
+  **`AudioDecoder` is not "iOS 16.4+".** Safari 16.4 shipped WebCodecs' _video_ interfaces
+  only; `AudioDecoder` was `undefined` on every version through 18.7 and arrived in **Safari
+  26.0**. So on the overwhelming majority of iPhones in use the streaming engine cannot be
+  built at all, and the buffer engine is not an optimisation for short clips — it is the only
+  engine that runs, whatever the `streaming` flag says and whatever the length. Measured on an
+  iPhone running iOS 18.7: the 45-minute asset decodes whole to **~900 MB and plays**, so the
+  "untenable on a phone" arithmetic below is not a ceiling anyone has actually hit.
 
 ### Where things live
 
@@ -219,8 +229,8 @@ Both roles render a **Debug — connection log** below the main UI in the debug 
 ([DiagnosticsPanel.tsx](src/ui/debug/DiagnosticsPanel.tsx)) — the instrument the connection-stability
 work was done with. It carries a summary line (freezes · peer leaves · rejoins · longest timer
 stall) and a one-tap **Copy log**, and the buffer is mirrored to `sessionStorage` so a log
-survives the browser discarding the tab. Events are tagged `beat`, `ice`, `net`, `page`,
-`peer`, `timer` or `transport`.
+survives the browser discarding the tab. Events are tagged `audio`, `beat`, `ice`, `net`,
+`page`, `peer`, `timer` or `transport`.
 
 The lines worth knowing:
 
@@ -382,12 +392,19 @@ keep `+faststart` on the audio — the streaming engine needs the `moov` in the 
   `outputLatency` is unreliable (0 on iOS Safari and 0-until-warmup on Chrome), which is why
   `getOutputTimestamp` is the primary signal. The estimate is **held for 4 s after a wake**,
   when platform readings are noisy enough to look like real drift.
-- **Loop wrap on streaming sources:** nothing is decoded across the seam, so when the target
-  wraps to 0 the follower briefly shows `syncing` while a fresh window fetches and decodes.
-  Fine on a 45-minute loop, conspicuous on a short one.
-- **WebCodecs is required for long content.** Without `AudioDecoder` (iOS < 16.4) a
-  `streaming` source falls back to the whole-file buffer engine on iOS — which is exactly the
-  unbounded decode the streaming engine exists to avoid. Known gap; see FEASIBILITY.md.
+- **Loop wrap on streaming sources:** on a track too long to fit in one window nothing is
+  decoded across the seam, so when the target wraps to 0 the follower briefly shows `syncing`
+  while a fresh window fetches and decodes. Tracks that fit in one window loop on the audio
+  thread and have no seam at all (measured: 1–7 ms drift across a wrap on the 20 s clip).
+- **The memory-safe path needs `AudioDecoder`** — Chromium, Firefox 130+, or **Safari 26+**
+  (not iOS 16.4; that was video-only WebCodecs). Without it, iOS uses the whole-file buffer
+  engine for everything, at ~23 MB per minute of decoded float32 PCM: ~337 MB for the
+  15-minute asset, ~900 MB for the 45-minute one. **Both are confirmed playing on an iPhone on
+  iOS 18.7** (`?debug=1` shows `engine = buffer`, `audio out = web-audio`), so there is no
+  cap in the code — a limit was tried and removed, because it refused content that demonstrably
+  works. Where the real ceiling is remains unknown, and it will differ by device; every decode
+  now logs its measured size to the `audio` diagnostic category, and that log survives a tab
+  discard, so a device that _is_ killed still reports what it was holding.
 - The follower's soundtrack is a **stream-copy of the video's own AAC**, so their timelines
   are bit-identical (no encoder-delay offset).
 - Fixed leader (no migration); star topology, in the transport as well as the protocol.

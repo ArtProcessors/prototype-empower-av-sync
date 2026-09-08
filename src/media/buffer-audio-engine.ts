@@ -23,6 +23,7 @@
  * free-runs on the context clock until wake/resync. (MediaSession metadata
  * itself is owned by AudioSyncController — it's cross-platform.)
  */
+import { recordDiagnostic } from '../diagnostics/session-log'
 import { signedDrift, correctionRate } from '../sync/sync-math'
 import type {
   CorrectionInfo,
@@ -256,6 +257,24 @@ export class BufferAudioEngine implements FollowerAudioEngine {
 
         this.buffer = decoded
         this.bufferUrl = url
+
+        // How much float32 PCM this engine is now holding — the one number
+        // that decides whether the OS lets the tab live, and the one nobody
+        // had measured. Recorded rather than estimated from the track length,
+        // and the log is mirrored to sessionStorage, so a device that *is*
+        // killed still reports what it was holding when it went. Use it to
+        // find the real ceiling per device instead of guessing at one.
+        const megabytes =
+          (decoded.length * decoded.numberOfChannels * 4) / (1024 * 1024)
+
+        recordDiagnostic(
+          'audio',
+          `decoded whole track — ${decoded.duration.toFixed(0)}s, ` +
+            `${decoded.numberOfChannels}ch @ ${(
+              decoded.sampleRate / 1000
+            ).toFixed(1)}kHz, holding ${megabytes.toFixed(0)} MB`,
+        )
+
         this.stopSource() // next correct() starts playback at the live target
       })
       .catch(() => {

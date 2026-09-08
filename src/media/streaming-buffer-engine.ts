@@ -1,25 +1,31 @@
 /**
- * Long-form follower audio engine. Whole-file decode (BufferAudioEngine) costs
- * ~21 MB/min, so a 45-min track would need ~950 MB of RAM — untenable on a
- * phone. This engine keeps that flat by decoding only a sliding WINDOW of the
- * timeline with WebCodecs:
+ * Follower audio engine: plays the soundtrack on the AudioContext clock,
+ * decoding only a sliding WINDOW of it with WebCodecs.
  *
  *   fetch compressed file (small) → demux (mp4box) into encoded AAC frames
  *   kept in memory → decode a ~60 s PCM window around the playhead → play it
- *   EXACTLY like BufferAudioEngine (AudioContext-clock scheduling,
- *   sample-accurate source-node repositioning, playbackRate nudges,
- *   mute-switch-bypassing stream-sink keep-alive) → refill/slide the window
- *   before it runs out. Memory stays ~85 MB regardless of track length.
+ *   with AudioContext-clock scheduling, sample-accurate source-node
+ *   repositioning, playbackRate nudges and a mute-switch-bypassing stream-sink
+ *   keep-alive → refill/slide the window before it runs out. Memory stays
+ *   ~85 MB regardless of track length.
  *
- * Within a window it IS BufferAudioEngine — same correction math, gain
- * de-click, and the iOS lock-screen stream sink. The only added machinery is
- * window bookkeeping: decode the next window ahead of the playhead and swap to
- * it (a de-clicked reposition into the overlapping region, so it's seamless),
- * and decode a fresh window on a large seek / loop wrap.
+ * The windowing is why it exists: decoding a whole file costs ~21 MB/min, so a
+ * 45-minute track holds ~950 MB. (That figure is arithmetic — a phone has been
+ * seen playing it. See FEASIBILITY.md; the ceiling is unmeasured, not proven.)
  *
- * Falls back (via onLoadFailed) when WebCodecs is unavailable (iOS < 16.4),
- * demux fails, or the codec isn't AAC-LC — the controller then routes to the
- * element path.
+ * Sibling to {@link BufferAudioEngine}, which decodes whole files on the same
+ * clock. Within a window this engine behaves identically — same correction
+ * math, same gain de-click, same iOS stream-sink keep-alive — and when a
+ * window holds the entire track it loops it on the audio thread exactly as the
+ * whole-file engine does (see `spansWholeTrack`). The added machinery is window
+ * bookkeeping: decode the next window ahead of the playhead and swap to it (a
+ * de-clicked reposition into the overlap, so it is seamless), and decode a
+ * fresh window on a large seek or a loop wrap that leaves the window.
+ *
+ * Falls back (via onLoadFailed) when demux fails or the codec isn't AAC-LC, and
+ * is never built at all without WebCodecs *audio* — which on iOS means every
+ * version below Safari 26, so on most iPhones this file never runs. See
+ * `WEBCODECS_AUDIO_OK` in audio-sync-controller.ts.
  */
 import { signedDrift, correctionRate } from '../sync/sync-math'
 import type {
@@ -33,23 +39,27 @@ const WINDOW_STEP_SEC = 45 // how far each slide advances the window start (=> 1
 const PREFETCH_MARGIN_SEC = 30 // start decoding the next window this far before the current ends
 const PREROLL_SEC = 0.5 // decode slightly before the window start (decoder warm-up / gapless seam)
 const WINDOW_EDGE_SEC = 1.5 // don't START playback within this of a window's very end
+const WHOLE_TRACK_SLACK_SEC = 0.05 // tolerance when asking "does this window hold the whole track?"
 
-// Correction constants mirror BufferAudioEngine (see there for rationale).
-const HARD_RESTART_SEC = 0.25
-const RESTART_COOLDOWN_MS = 800
-const SCHEDULE_AHEAD_SEC = 0.03
-const LOCK_DEADBAND_SEC = 0.04
-const LOCKED_SEC = 0.02
-const DRIFT_EMA_ALPHA = 0.25
-const RATE_EPS = 0.002
+// Correction constants. These are tighter than the element engine's: a
+// source-node reposition is sample-accurate and costs nothing, where an
+// element seek stalls the pipeline, so this path can afford to correct sooner
+// and more often.
+const HARD_RESTART_SEC = 0.25 // reposition instead of nudging beyond this drift
+const RESTART_COOLDOWN_MS = 800 // keep repositions from thrashing
+const SCHEDULE_AHEAD_SEC = 0.03 // start sources slightly ahead so the clock mapping is exact
+const LOCK_DEADBAND_SEC = 0.04 // hold the measured rate inside this band
+const LOCKED_SEC = 0.02 // UI "locked" threshold (tighter than the deadband)
+const DRIFT_EMA_ALPHA = 0.25 // smooth noisy drift samples before steering
+const RATE_EPS = 0.002 // skip rate writes that wouldn't audibly change
 const RATE_GAIN = 0.5
-const RATE_MIN = 0.98
+const RATE_MIN = 0.98 // buffer sources don't preserve pitch — keep nudges subtle
 const RATE_MAX = 1.02
-const MAX_LATENCY_SEC = 0.5
-const LATENCY_EMA_ALPHA = 0.2
-const FALLBACK_LATENCY_SEC = 0.12
-const DECLICK_SEC = 0.006
-const UNMUTE_SEC = 0.03
+const MAX_LATENCY_SEC = 0.5 // clamp auto-measured output latency to something sane
+const LATENCY_EMA_ALPHA = 0.2 // smooth the latency estimate
+const FALLBACK_LATENCY_SEC = 0.12 // iOS often reports no latency at all
+const DECLICK_SEC = 0.006 // gain dip around a source swap so the edge can't pop
+const UNMUTE_SEC = 0.03 // fade-in on first lock (converge silently before that)
 
 /**
  * Read a numeric on-device tuning override from the query string, e.g.
@@ -364,7 +374,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     this.onLoadFailed = onLoadFailed
   }
 
-  // ─── Output stage (mirrors BufferAudioEngine: context + keep-alive sink +
+  // ─── Output stage (context + keep-alive sink +
   //     master gain) ───
 
   /**
@@ -554,22 +564,22 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
       let headEnd = 0
 
       while (!info && headEnd < MAX_HEAD_BYTES) {
-        const response = await fetch(url, {
-          headers: {
-            Range: `bytes=${headEnd}-${headEnd + HEAD_CHUNK_BYTES - 1}`,
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error(`fetch ${response.status}`)
-        }
+        const part = await this.fetchRange(
+          url,
+          headEnd,
+          headEnd + HEAD_CHUNK_BYTES,
+        )
 
         if (this.desiredUrl !== url) {
           return
         }
 
-        const part = await response.arrayBuffer()
-        const mp4Buffer = part as ArrayBuffer & { fileStart: number }
+        // mp4box wants its own ArrayBuffer tagged with the offset it came
+        // from, so the slice is copied out rather than handed over as a view.
+        const mp4Buffer = part.slice().buffer as ArrayBuffer & {
+          fileStart: number
+        }
+
         mp4Buffer.fileStart = headEnd
         // onReady fires synchronously once the moov is complete.
         file.appendBuffer(mp4Buffer)
@@ -672,6 +682,100 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
   }
 
   /**
+   * Range-fetch `[startByte, endByte)` of `url`.
+   *
+   * Tolerates a responder that ignores `Range` and answers `200` with the
+   * whole file, by slicing the bytes the caller asked for. That is not a
+   * hypothetical: this app precaches its short soundtrack, and Workbox's
+   * precache route serves a full `200` from Cache Storage — the runtime media
+   * route with `RangeRequestsPlugin` never sees the request, because a plain
+   * `fetch()` has an empty `destination` and only `audio`/`video` match it.
+   * Checking `response.ok` alone let those whole-file bytes through as if they
+   * began at `startByte`, which handed the container header to the decoder.
+   *
+   * @param url the soundtrack
+   * @param startByte first byte wanted, inclusive
+   * @param endByte last byte wanted, exclusive
+   */
+  private async fetchRange(
+    url: string,
+    startByte: number,
+    endByte: number,
+  ): Promise<Uint8Array> {
+    const response = await fetch(url, {
+      headers: { Range: `bytes=${startByte}-${endByte - 1}` },
+    })
+
+    if (!response.ok) {
+      throw new Error(`range ${response.status}`)
+    }
+
+    const body = new Uint8Array(await response.arrayBuffer())
+
+    // 206 means the responder honoured the range and the body already starts
+    // at `startByte`. Anything else ok-but-not-partial is a whole-file body.
+    if (response.status === 206) {
+      return body
+    }
+
+    if (body.byteLength < startByte) {
+      throw new Error(
+        `range ignored and body too short (${body.byteLength} < ${startByte})`,
+      )
+    }
+
+    return body.subarray(startByte, Math.min(endByte, body.byteLength))
+  }
+
+  /**
+   * The window start a request for `startSec` actually resolves to.
+   *
+   * Shared so callers can reason about the window they will *get* rather than
+   * the one they asked for. Those diverge near the end of a track — the last
+   * window is pinned so it ends at EOF — and a caller comparing its request
+   * against an installed window's real start never matches, so it re-requests
+   * the same window forever. That storm hit every track shorter than
+   * `WINDOW_STEP_SEC` on every tick, and the closing `WINDOW_SEC` of a long
+   * one.
+   */
+  private windowStartFor(startSec: number): number {
+    return Math.max(
+      0,
+      Math.min(startSec, Math.max(0, this.totalSec - WINDOW_SEC)),
+    )
+  }
+
+  /**
+   * Whether `decoded` holds the entire track, so there is no next window to
+   * slide to and a source over it can simply loop.
+   */
+  private spansWholeTrack(decoded: DecodedWindow): boolean {
+    return (
+      decoded.startSec <= 0 &&
+      this.totalSec > 0 &&
+      decoded.buffer.duration >= this.totalSec - WHOLE_TRACK_SLACK_SEC
+    )
+  }
+
+  /**
+   * Whether `decoded` can be played at track position `aim`, keeping `margin`
+   * clear of its edges.
+   *
+   * A window holding the whole track has no meaningful edges: its end *is* the
+   * loop seam, and a source over it wraps there on the audio thread. Applying
+   * an edge margin to it is what made a short loop unplayable — the wrap fell
+   * inside the margin, so the source was torn down and could not restart until
+   * `WINDOW_EDGE_SEC` into the next lap.
+   */
+  private usableFor(
+    decoded: DecodedWindow,
+    aim: number,
+    margin: number,
+  ): boolean {
+    return this.spansWholeTrack(decoded) || this.covers(decoded, aim, margin)
+  }
+
+  /**
    * Decode a PCM window covering `[startSec, startSec + WINDOW_SEC]`,
    * range-fetching just the compressed bytes it needs.
    */
@@ -688,10 +792,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     // happens while it is in flight.
     const generation = this.generation
 
-    const windowStart = Math.max(
-      0,
-      Math.min(startSec, Math.max(0, this.totalSec - WINDOW_SEC)),
-    )
+    const windowStart = this.windowStartFor(startSec)
     const windowLength = Math.min(WINDOW_SEC, this.totalSec - windowStart)
 
     if (windowLength <= 0) {
@@ -721,15 +822,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     // in the mdat).
     const byteStart = table.offset[firstSample]
     const byteEnd = table.offset[lastSample] + table.size[lastSample]
-    const response = await fetch(url, {
-      headers: { Range: `bytes=${byteStart}-${byteEnd - 1}` },
-    })
-
-    if (!response.ok) {
-      throw new Error(`range ${response.status}`)
-    }
-
-    const bytes = new Uint8Array(await response.arrayBuffer())
+    const bytes = await this.fetchRange(url, byteStart, byteEnd)
 
     if (this.isStale(generation)) {
       return null
@@ -889,21 +982,24 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
    * current window overlaps the next one's start, so a coverage check would
    * always skip and the next window would never decode until the current ran
    * out (the ~1 s swap gap). Only skip if we already have (or are fetching)
-   * that exact window.
+   * that exact window — compared after clamping, since a request past the last
+   * window resolves back onto it (see {@link windowStartFor}).
    */
   private prefetchAt(startSec: number): void {
     if (this.pendingStartSec != null) {
       return
     }
 
+    const resolved = this.windowStartFor(startSec)
+
     if (
       this.latestWindow &&
-      Math.abs(this.latestWindow.startSec - startSec) < 1
+      Math.abs(this.latestWindow.startSec - resolved) < 1
     ) {
       return
     }
 
-    this.decodeInto(startSec)
+    this.decodeInto(resolved)
   }
 
   /** Decode the window at `startSec` and install it once it lands. */
@@ -936,7 +1032,7 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     )
   }
 
-  // ─── Gain helpers (identical model to BufferAudioEngine) ───
+  // ─── Gain helpers ───
 
   /** Silence output immediately (cold starts converge silently until lock). */
   private mute(): void {
@@ -1065,6 +1161,17 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     const source = ctx.createBufferSource()
     source.buffer = decoded.buffer
     source.playbackRate.value = rate
+
+    // A window holding the whole track loops itself, on the audio thread,
+    // with no gap and nothing for the correction timer to do at the seam.
+    // Without it the source simply ran out at EOF and the next lap had to be
+    // started by hand, a tick late and behind a fade-in.
+    if (this.spansWholeTrack(decoded)) {
+      source.loop = true
+      source.loopStart = 0
+      source.loopEnd = duration
+    }
+
     source.connect(this.masterGain ?? this.outputNode())
 
     const when = ctxNow + SCHEDULE_AHEAD_SEC
@@ -1426,12 +1533,12 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     if (
       this.source &&
       this.sourceWindow &&
-      this.covers(this.sourceWindow, aim, 0.05)
+      this.usableFor(this.sourceWindow, aim, 0.05)
     ) {
       playWindow = this.sourceWindow
     } else if (
       this.latestWindow &&
-      this.covers(this.latestWindow, aim, WINDOW_EDGE_SEC)
+      this.usableFor(this.latestWindow, aim, WINDOW_EDGE_SEC)
     ) {
       playWindow = this.latestWindow
       // Seamless slide from a playing source.
@@ -1494,14 +1601,17 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
 
     // Slide ahead: prefetch the next window once the playhead nears this
     // window's end.
-    if (position > windowEnd - PREFETCH_MARGIN_SEC) {
+    if (
+      !this.spansWholeTrack(playWindow) &&
+      position > windowEnd - PREFETCH_MARGIN_SEC
+    ) {
       this.prefetchAt(playWindow.startSec + WINDOW_STEP_SEC)
     }
 
     if (
       Math.abs(rawDrift) > HARD_RESTART_SEC &&
       now - this.lastRestartAt >= RESTART_COOLDOWN_MS &&
-      this.covers(playWindow, aim, WINDOW_EDGE_SEC)
+      this.usableFor(playWindow, aim, WINDOW_EDGE_SEC)
     ) {
       this.startAt(aim, playWindow, ctxNow)
 
@@ -1591,6 +1701,13 @@ export class StreamingBufferEngine implements FollowerAudioEngine {
     if (!IS_IOS && !this.usingSink) {
       this.connectOutput(true)
       this.startAt(from, fromWindow, ctxNow, true)
+    }
+
+    // A whole-track source loops on the audio thread, so it already free-runs
+    // for as long as the context stays alive — there is no runway to build,
+    // and a chain would only stack a second copy of the same audio over it.
+    if (this.spansWholeTrack(fromWindow)) {
+      return
     }
 
     this.buildChain(

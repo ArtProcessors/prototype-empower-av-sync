@@ -26,6 +26,8 @@ const FLUSH_INTERVAL_MS = 10000
 
 /** Which subsystem a diagnostic event came from. */
 export type DiagnosticCategory =
+  /** Follower audio: what was decoded, and how much memory it holds. */
+  | 'audio'
   /** Beat flow from the screen: gaps, staleness, resyncs. */
   | 'beat'
   /** `RTCPeerConnection` connection/ICE state transitions. */

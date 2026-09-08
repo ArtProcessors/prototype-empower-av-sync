@@ -3,9 +3,9 @@
  * toward the screen's video position.
  *
  * Engines:
- *  - Element (Android/desktop): <audio> routed through Web Audio. Small drifts
- *    are closed by nudging `playbackRate` (pitch preserved, no audible jump);
- *    large drifts hard-seek.
+ *  - Element (Android/desktop, short content): <audio> routed through Web
+ *    Audio. Small drifts are closed by nudging `playbackRate` (pitch
+ *    preserved, no audible jump); large drifts hard-seek.
  *  - Buffer (iOS): Safari's media-element pipeline stalls >1s on seeks and
  *    spontaneously mid-playback, and it ignores fine playbackRate adjustments
  *    — element-side correction is unworkable there. Followers play a decoded
@@ -13,6 +13,13 @@
  *    While the soundtrack downloads/decodes the follower reports a 'syncing'
  *    state (silent — cleaner than the element's stuttery streaming playback);
  *    the element remains primed only as a fallback if fetch/decode fails.
+ *  - Stream (long content, where WebCodecs audio exists): a sliding WebCodecs
+ *    window on the same clock (see StreamingBufferEngine), so memory stays
+ *    flat in track length.
+ *
+ * The buffer engine is not a short-content optimisation the streaming engine
+ * could absorb — see {@link WEBCODECS_AUDIO_OK}. On iOS below Safari 26 it is
+ * the only engine that can be built at all, whatever the source's length.
  *
  * Autoplay gate: unlock() must run inside the join tap (fires play() before
  * any await).
@@ -22,9 +29,22 @@ import { createAudioWaveform, type AudioWaveform } from './audio-waveform'
 import { BufferAudioEngine } from './buffer-audio-engine'
 import { StreamingBufferEngine } from './streaming-buffer-engine'
 
-/** WebCodecs (iOS 16.4+) — required by the streaming engine, else long content
- * falls back to the element path. */
-const WEBCODECS_OK = typeof AudioDecoder !== 'undefined'
+/**
+ * Whether WebCodecs *audio* decoding exists — the streaming engine's hard
+ * requirement.
+ *
+ * Read the version numbers carefully, because getting this wrong deleted the
+ * only working iOS path once already. Safari 16.4 shipped WebCodecs, but only
+ * the **video** interfaces: `VideoDecoder`, `VideoEncoder`, `EncodedVideoChunk`
+ * and `VideoFrame`. `AudioDecoder` stayed `undefined` on every version through
+ * 18.7 and only arrived in **Safari 26.0**. So "WebCodecs since iOS 16.4" is
+ * true and irrelevant here — on the overwhelming majority of iPhones in use
+ * this is `false` and the streaming engine cannot be built at all.
+ *
+ * Which is why {@link BufferAudioEngine} still exists: on iOS it is not a
+ * short-content optimisation, it is the only engine that runs.
+ */
+const WEBCODECS_AUDIO_OK = typeof AudioDecoder !== 'undefined'
 
 const HARD_SEEK_SEC = 0.6 // only snap on large drift; the nudge closes anything smaller
 const SEEK_COOLDOWN_MS = 8000 // keep hard seeks rare
@@ -175,13 +195,14 @@ export class AudioSyncController {
   /** Auto-measured output latency. See {@link sampleOutputLatency}. */
   private measuredLatencySec = 0
   /**
-   * Whole-file decode engine — iOS, short content. `null` off iOS, where the
-   * element path handles short content.
+   * Whole-file decode engine — iOS, any length. `null` off iOS, where the
+   * element path handles short content and the streaming engine handles long.
    */
   private bufferEngine: BufferAudioEngine | null = null
   /**
    * Windowed WebCodecs decode engine — any platform, long content. `null`
-   * where WebCodecs is unavailable (iOS < 16.4).
+   * where WebCodecs audio decoding is unavailable (see
+   * {@link WEBCODECS_AUDIO_OK}); on iOS that is every version below Safari 26.
    */
   private streamEngine: StreamingBufferEngine | null = null
   /**
@@ -240,7 +261,7 @@ export class AudioSyncController {
     this.element = element
     this.currentUrl = primerUrl
 
-    if (WEBCODECS_OK) {
+    if (WEBCODECS_AUDIO_OK) {
       this.streamEngine = new StreamingBufferEngine(() =>
         this.fallbackToElement(),
       )
@@ -257,8 +278,14 @@ export class AudioSyncController {
   }
 
   /**
-   * Which engine should own a source: stream for long content, buffer on iOS,
-   * else `null` for the element path.
+   * Which engine should own a source: stream for long content, the whole-file
+   * buffer engine on iOS, else `null` for the element path.
+   *
+   * The iOS clause is not about content length — it is that the element path
+   * cannot hold sync on Safari at all (see this module's header). It cannot be
+   * folded into the streaming engine either, however neatly that engine now
+   * handles a short track, because {@link WEBCODECS_AUDIO_OK} is `false` on
+   * every iOS below Safari 26: there would be no engine left.
    */
   private engineFor(streaming: boolean): FollowerAudioEngine | null {
     if (streaming && this.streamEngine) {
