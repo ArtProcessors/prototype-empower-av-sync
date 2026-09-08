@@ -58,7 +58,6 @@ export const CLOUDFLARE_ICE_URLS = [
   'turn:turn.cloudflare.com:80?transport=tcp',
   'turn:turn.cloudflare.com:3478?transport=tcp',
   'turn:turn.cloudflare.com:3478?transport=udp',
-  'turn:turn.cloudflare.com:53?transport=udp',
 ]
 
 /**
