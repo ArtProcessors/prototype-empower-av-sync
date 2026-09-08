@@ -21,7 +21,10 @@ type Props = {
  * yet, so there is nothing honest to draw.
  *
  * The ring is decorative either way, and hidden from assistive tech, because
- * the live region beside it already says everything it does.
+ * the live region beside it already says everything it does. It is also the
+ * one fixed point on the screen: every tone draws it at the same size in the
+ * same place, so a status change reads as the words changing under it rather
+ * than as the whole panel being rebuilt.
  */
 export function DemoStatusDisplay({ status, waveform }: Props) {
   return (
@@ -35,7 +38,7 @@ export function DemoStatusDisplay({ status, waveform }: Props) {
           <DemoWaveformRing waveform={waveform} className={styles.ring} />
         )}
       </div>
-      <div role="status" aria-live="polite">
+      <div className={styles.copy} role="status" aria-live="polite">
         <p className={styles.headline}>{status.headline}</p>
         {status.detail && <p className={styles.detail}>{status.detail}</p>}
       </div>

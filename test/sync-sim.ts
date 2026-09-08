@@ -327,6 +327,10 @@ console.log('\n[10] launch intent (the URL, read once, in one place)')
     launchIntentFromSearch('?debug=1&video=soh').ui === 'debug',
     'a launch video and the debug UI are not exclusive',
   )
+  assert(
+    launchIntentFromSearch('?rings=1').rings && !bare.rings,
+    '?rings=1 asks for the ring gallery instead of a session',
+  )
 }
 
 console.log('\n[11] roomToJoin (screen or listener, decided in one place)')
@@ -361,6 +365,7 @@ console.log('\n[11] roomToJoin (screen or listener, decided in one place)')
     room: null,
     video: null,
     autostart: false,
+    rings: false,
     ...over,
   })
 

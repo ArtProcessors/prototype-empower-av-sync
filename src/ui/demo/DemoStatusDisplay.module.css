@@ -6,24 +6,65 @@
  * so the tone has to set `color` on the element the canvas sits inside, and one
  * attribute selector per tone keeps every tone's colour in one place.
  *
+ * Every tone draws the same circle at the same radius and the same weight, so
+ * moving between them changes the colour and the words and nothing else. The
+ * box is deliberately larger than that circle: the live ring swings outside its
+ * resting radius, and the headroom for that has to sit inside the box the
+ * canvas fills.
+ *
  * `.ring` is here rather than with DemoWaveformRing because it is the
  * indicator's own layout: the canvas fills the box this module sizes, and two
  * rules below select on its presence. The component takes the class as a prop.
  */
 .status {
+  --headline-size: 1.6rem;
+  --detail-size: 0.95rem;
+  --detail-gap: 6px;
+  /* Set on both lines of copy rather than inherited, so the reservation on
+     `.copy` can be arithmetic rather than a guess at the body's leading. */
+  --copy-leading: 1.4;
+
   display: grid;
   justify-items: center;
   gap: 22px;
 }
+
+/* -- The ring ------------------------------------------------------------ */
 .indicator {
+  /*
+   * The circle's radius and its stroke, both as fractions of the box's
+   * half-size — the same two numbers as `REST_RADIUS` and `STROKE` in
+   * DemoWaveformRing.tsx. That file owns them, because everything it draws
+   * outside the resting circle has to fit in whatever they leave; this one
+   * follows, so a still tone and the live ring are the same circle.
+   */
+  --ring-rest: 0.7;
+  --ring-stroke: 0.035;
+  --ring-box: min(52vw, 12rem);
+  /* Halved because the stroke is a fraction of the half-size, not the box. */
+  --ring-width: calc(var(--ring-box) * var(--ring-stroke) / 2);
+
   position: relative;
   display: grid;
   place-items: center;
-  inline-size: min(52vw, 12rem);
+  inline-size: var(--ring-box);
   aspect-ratio: 1;
-  border: 3px solid color-mix(in srgb, currentColor 35%, transparent);
-  border-radius: 50%;
   color: #6b7280;
+}
+/* The still ring. Inset to put its stroke *centred* on the resting radius,
+   which is where the canvas centres its own — an outer edge there would sit
+   half a stroke proud of the live one. */
+.indicator::before {
+  content: '';
+  position: absolute;
+  inset: calc((1 - var(--ring-rest)) * 50% - var(--ring-width) / 2);
+  border: var(--ring-width) solid
+    color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 50%;
+}
+/* Gone when the live ring is mounted, which draws the same circle itself. */
+.indicator:has(.ring)::before {
+  display: none;
 }
 /* Decorative: the live region beside it already says all of this. */
 .indicator::after {
@@ -32,6 +73,17 @@
 }
 .indicator[data-tone='busy'] {
   color: var(--colour-info);
+}
+/* The only tone that spins: something is genuinely in flight. Painted onto the
+   ring rather than added beside it, so nothing about the circle changes. */
+.indicator[data-tone='busy']::before {
+  border-top-color: currentColor;
+  animation: spin 1.1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
 }
 .indicator[data-tone='good'] {
   color: var(--colour-good);
@@ -53,12 +105,6 @@
 .indicator[data-tone='error']::after {
   content: '✕';
 }
-/* The live ring draws its own resting circle, so the border would double it.
-   Kept as a transparent border rather than removed, so the box the canvas
-   sizes itself against does not change with the tone. */
-.indicator:has(.ring) {
-  border-color: transparent;
-}
 .ring {
   position: absolute;
   inset: 0;
@@ -66,33 +112,31 @@
   block-size: 100%;
 }
 
-/* The only tone that spins: something is genuinely in flight. */
-.indicator[data-tone='busy']::before {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border: 3px solid transparent;
-  border-top-color: currentColor;
-  border-radius: inherit;
-  animation: spin 1.1s linear infinite;
+/* -- The sentence -------------------------------------------------------- */
+/* Room for a headline and two lines of detail, held whether or not the current
+   state fills it. The block is centred in the view, so without the reservation
+   a state whose sentence wraps — or has none — would shift the ring above it,
+   which is the one thing that should be standing still. Two lines is what a
+   phone-width column makes of the longest detail in `demo-status.ts`. */
+.copy {
+  min-block-size: calc(
+    var(--headline-size) * var(--copy-leading) + var(--detail-gap) +
+      var(--detail-size) * var(--copy-leading) * 2
+  );
 }
-@keyframes spin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-
 .headline {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: var(--headline-size);
   font-weight: 700;
+  line-height: var(--copy-leading);
   text-wrap: balance;
 }
 .detail {
-  margin: 6px 0 0;
+  margin: var(--detail-gap) 0 0;
   max-inline-size: 26rem;
   color: var(--demo-dim);
-  font-size: 0.95rem;
+  font-size: var(--detail-size);
+  line-height: var(--copy-leading);
   text-wrap: pretty;
 }
 

@@ -40,20 +40,23 @@
 
 /* -- The one button ------------------------------------------------------ */
 .action {
-  inline-size: min(62vw, 15rem);
-  aspect-ratio: 1;
+  width: 10rem;
   margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 30%, #4478ea, #2145a8);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 2rem;
+  background: radial-gradient(circle at 50% 140%, rgb(0 0 0 / 0%), #1ff0c0);
   color: #fff;
   font: inherit;
   font-size: 1.5rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 14px 44px rgb(42 91 215 / 0.35);
-  transition: transform 120ms ease;
+  box-shadow: 0 14px 44px rgba(42, 215, 131, 0.35);
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+.action:hover:not(:disabled) {
+  border-color: #1ff0c0;
+  background: radial-gradient(circle at 50% 140%, rgb(0 0 0 / 0%), #1ff0c0);
+  box-shadow: 0 14px 44px rgba(31, 240, 192, 0.35);
 }
 .action:active:not(:disabled) {
   transform: scale(0.97);

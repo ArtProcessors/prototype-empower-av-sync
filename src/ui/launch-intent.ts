@@ -31,6 +31,13 @@ export const VIDEO_QUERY_PARAM = 'video'
 /** Query parameter asking the screen to start itself, e.g. `?autostart=1`. */
 export const AUTOSTART_QUERY_PARAM = 'autostart'
 
+/**
+ * Query parameter opening the follower's ring gallery instead of the app, e.g.
+ * `?rings=1`. A development page and no part of either UI — see
+ * `ui/demo/DemoStatusGallery.tsx`.
+ */
+export const RINGS_QUERY_PARAM = 'rings'
+
 /** What the page's URL asks this device to be. */
 export interface LaunchIntent {
   /** Which UI to render. */
@@ -49,6 +56,12 @@ export interface LaunchIntent {
   video: string | null
   /** Whether the screen should start without waiting for a tap. */
   autostart: boolean
+  /**
+   * Whether to open the ring gallery rather than a session at all. Sits with
+   * the rest of the intent because it is still the URL saying what this page
+   * is; unlike the others, nothing downstream of it ever joins a room.
+   */
+  rings: boolean
 }
 
 /**
@@ -75,6 +88,7 @@ export function launchIntentFromSearch(search: string): LaunchIntent {
     // "deliberately no video" to express — the catalogue always has a default.
     video: video === null || video === '' ? null : video,
     autostart: flagFromParams(params, AUTOSTART_QUERY_PARAM),
+    rings: flagFromParams(params, RINGS_QUERY_PARAM),
   }
 }
 

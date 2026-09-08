@@ -37,10 +37,15 @@ const GAIN = 1.2
 /**
  * Ring geometry, as fractions of the canvas's half-size.
  *
- * `REST + BREATH + SWING` stays under 1 so the loudest peak still clears the
- * stroke, and `REST + BREATH` lands near where the static tones draw their
- * border — so the indicator does not appear to change size when the status
- * moves from "loading" to "in sync".
+ * `REST_RADIUS` and `STROKE` are the shared circle: every still tone draws
+ * exactly that one — see `--ring-rest` and `--ring-stroke` in
+ * `DemoStatusDisplay.module.css`, which follow these two — so the indicator
+ * does not change size when the status moves from "loading" to "in sync".
+ * Change them here and there together.
+ *
+ * The rest of the box is this ring's alone, which is why the resting circle is
+ * well inside it: `REST + BREATH + SWING` stays under 1 so the loudest peak
+ * still clears the edge.
  */
 const REST_RADIUS = 0.7
 const BREATH = 0.08

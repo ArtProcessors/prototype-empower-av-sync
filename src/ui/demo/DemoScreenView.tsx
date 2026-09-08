@@ -28,7 +28,6 @@ type Props = SessionViewProps & {
  * focus, reachable without ever being part of the picture.
  */
 export function DemoScreenView({
-  session,
   transport,
   mountScreenVideo,
 }: Props) {
@@ -53,21 +52,6 @@ export function DemoScreenView({
           connected are unaffected.
         </p>
       )}
-
-      <div className={styles.controls}>
-        <span className={demo.room}>{transport.peerCount} listening</span>
-
-        <button
-          className={demo.ghost}
-          onClick={() => window.location.reload()}
-        >
-          Refresh
-        </button>
-
-        <button className={demo.ghost} onClick={() => session.leave()}>
-          Stop
-        </button>
-      </div>
     </main>
   )
 }

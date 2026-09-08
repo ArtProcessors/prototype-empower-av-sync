@@ -1,0 +1,76 @@
+/*
+ * The ring gallery's own layout, and nothing else.
+ *
+ * Every panel is a real `DemoStatusDisplay`, so its ring, its copy and the
+ * space they take up are decided by `DemoStatusDisplay.module.css`. This
+ * module only puts the panels in a row: equal cells, close enough together
+ * that a ring the wrong size or in the wrong place is obvious against the one
+ * beside it. It sits inside `.shell` from `demo.module.css` for the demo's
+ * greys, which the status copy reads.
+ */
+.page {
+  display: grid;
+  justify-items: center;
+  gap: 40px;
+  padding: max(24px, env(safe-area-inset-top)) 20px 64px;
+}
+
+.intro {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.lede {
+  margin: 0;
+  max-inline-size: 40rem;
+  color: var(--demo-dim);
+  text-wrap: pretty;
+}
+
+.grid {
+  display: grid;
+  /* About the column a phone gives the real view, so the copy wraps the way it
+     does there, and no wider — the panels are here to be compared against each
+     other, so they should sit close together. */
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 21rem));
+  gap: 20px;
+  /* Justified rather than stretched: `auto-fit` needs a definite width to
+     count columns against, and the page centres its children. */
+  inline-size: min(100%, 88rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* `start`, not `center`: the panels are only comparable if every ring is the
+   same distance from the top of its cell. */
+.panel {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 14px;
+  padding: 20px 12px;
+  border: 1px solid #1c1c1e;
+  border-radius: 14px;
+  text-align: center;
+}
+.caption {
+  margin: 0;
+  color: var(--demo-dim);
+  font-size: 0.85rem;
+}
+/* The tone drives the ring's colour, so it is worth naming beside the panel. */
+.tone {
+  margin-inline-start: 6px;
+  padding: 2px 7px;
+  border: 1px solid #303034;
+  border-radius: 999px;
+  color: var(--demo-dimmer);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
