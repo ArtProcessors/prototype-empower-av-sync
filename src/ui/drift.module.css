@@ -1,0 +1,17 @@
+/*
+ * The three colours a drift reading can be — the CSS half of `drift.ts`.
+ *
+ * Kept in its own module because the class is picked in TypeScript rather than
+ * written in JSX: `driftClassName` maps a band from `core/drift.ts` onto one of
+ * these, so the hero readout and the debug row cannot disagree about what
+ * "good" looks like. Whatever a band is applied to brings its own layout.
+ */
+.good {
+  color: var(--colour-good);
+}
+.warn {
+  color: var(--colour-warn);
+}
+.bad {
+  color: var(--colour-bad);
+}

@@ -6,11 +6,11 @@
  *  - `test` — the tiny synthetic clip (per-second flash+click). Imported as
  *    ES-module URLs → fingerprinted into dist/static/ and PRECACHED (works
  *    fully offline). Default while prototyping.
- *  - `soh` / `sync45` — real long clips. Their H.264 video and stream-copied
- *    AAC audio are served by URL and are NOT precached: the screen fetches the
- *    video on demand and each follower fetches only the small audio (both then
- *    runtime-cached by the service worker). Regenerate with ffmpeg — see
- *    README.
+ *  - `agent327` / `soh` / `sync45` — real clips. Their H.264 video and
+ *    stream-copied AAC audio are served by URL and are NOT precached: the
+ *    screen fetches the video on demand and each follower fetches only the
+ *    small audio (both then runtime-cached by the service worker). Regenerate
+ *    with ffmpeg — see README.
  *
  * The screen tags each `beat` with the chosen `mediaId`, so followers load the
  * matching soundtrack.
@@ -23,11 +23,11 @@ import soundtrack from './soundtrack.m4a'
 export const SYNTH_SOUNDTRACK_URL: string = soundtrack
 
 /** Selectable video ids broadcast on every beat as `mediaId`. */
-export type VideoId = 'test' | 'soh' | 'sync45'
+export type VideoId = 'test' | 'agent327' | 'soh' | 'sync45'
 
 /**
  * One video the screen can lead with. The shape is the core's
- * {@link MediaOption}; this app only narrows the id to the three it ships.
+ * {@link MediaOption}; this app only narrows the id to the four it ships.
  */
 export interface VideoOption extends MediaOption {
   /** Stable id broadcast on every beat as `mediaId`. */
@@ -44,6 +44,13 @@ export const VIDEOS: VideoOption[] = [
     label: 'Test clip — sync cues (20s, offline)',
     videoUrl: screenVideo,
     soundtrackUrl: soundtrack,
+  },
+  {
+    id: 'agent327',
+    label: 'Agent 327 — Blender short (~4m, streaming)',
+    videoUrl: `${LONG_FORM_BASE_URL}/agent-327.mp4`,
+    soundtrackUrl: `${LONG_FORM_BASE_URL}/agent-327.m4a`,
+    streaming: true,
   },
   {
     id: 'soh',

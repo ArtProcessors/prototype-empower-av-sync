@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { roomCodeFromSearch } from '../../core/join-link'
 import { readRejoinRoom } from '../../core/rejoin-memory'
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
+import { classNames } from '../class-names'
+import styles from './debug.module.css'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import type { ViewProps } from '../view-props'
@@ -21,17 +23,17 @@ export function Landing({ state, session }: ViewProps) {
   const connecting = state.phase === 'connecting'
 
   return (
-    <main className="wrap">
+    <main className={styles.wrap}>
       <h1>Empower — A/V Sync</h1>
-      <p className="muted">
+      <p className={styles.muted}>
         Fixed screen leader · followers' audio synced to the video clock · over
         WebRTC
       </p>
 
-      {state.error && <p className="error">⚠ {state.error}</p>}
+      {state.error && <p className={styles.error}>⚠ {state.error}</p>}
 
       {rejoinRoom && !state.error && (
-        <div className="card">
+        <div className={styles.card}>
           <p>
             🎧 You were listening in room <code>{rejoinRoom}</code>. Reconnect
             to resume synced audio.
@@ -45,14 +47,14 @@ export function Landing({ state, session }: ViewProps) {
         </div>
       )}
 
-      <div className="card">
+      <div className={styles.card}>
         <h2>Be the screen</h2>
-        <p className="muted">
+        <p className={styles.muted}>
           Plays the looping video and drives everyone's audio. Use one device
           as the display.
         </p>
-        <label className="field">
-          <span className="muted small">Video</span>
+        <label className={styles.field}>
+          <span className={classNames(styles.muted, styles.small)}>Video</span>
           <select
             value={state.media.selectedId}
             onChange={event => session.selectVideo(event.target.value)}
@@ -70,9 +72,9 @@ export function Landing({ state, session }: ViewProps) {
         </button>
       </div>
 
-      <div className="card">
+      <div className={styles.card}>
         <h2>Join as listener</h2>
-        <p className="muted">
+        <p className={styles.muted}>
           Enter the screen's room code; your audio locks to the video.
         </p>
         <input
@@ -93,7 +95,7 @@ export function Landing({ state, session }: ViewProps) {
         >
           {connecting ? 'Connecting…' : '🎧 Join (tap to enable audio)'}
         </button>
-        <p className="hint">
+        <p className={styles.hint}>
           The tap unlocks audio for this device (needed on iOS).
         </p>
       </div>

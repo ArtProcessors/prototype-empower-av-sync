@@ -1,0 +1,101 @@
+/*
+ * The only global stylesheet: the page reset, the palette every module shares,
+ * and the bare form controls both UIs render.
+ *
+ * Everything else is a CSS Module colocated with the component that imports
+ * it, so a class name can no longer reach a component that never asked for it.
+ * Two kinds of rule cannot be scoped that way and so live here:
+ *
+ *   - element selectors, which CSS Modules deliberately leaves global. Both
+ *     UIs render unclassed `<button>`, `<input>` and `<select>` and rely on
+ *     these defaults;
+ *   - the custom properties below, which are how the demo and the debug
+ *     instrument "share the palette and nothing else".
+ *
+ * A colour earns a token when more than one module needs it. Anything used in
+ * a single module stays a literal there, beside the rule that wants it.
+ */
+:root {
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+
+  /* Text and chrome. */
+  --colour-text: #eee;
+  --colour-text-muted: #999;
+  --colour-text-dim: #888;
+  --colour-border: #333;
+  --colour-rule: #1c1c1c;
+
+  /* The one accent, and the blue that means "reading", not "action". */
+  --colour-brand: #2a5bd7;
+  --colour-info: #8ab4ff;
+
+  /* Drift bands and status tones — the same three wherever they appear. */
+  --colour-good: #4ade80;
+  --colour-warn: #fbbf24;
+  --colour-bad: #f87171;
+
+  /* Something recoverable is wrong: signalling down, reconnecting. */
+  --colour-caution-border: #6b5a1e;
+  --colour-caution-text: #f0d68a;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #111;
+  color: var(--colour-text);
+  line-height: 1.4;
+}
+h1 {
+  font-size: 1.4rem;
+  margin: 0.2em 0;
+}
+h2 {
+  font-size: 1.1rem;
+}
+code {
+  background: #222;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+button {
+  font: inherit;
+  padding: 10px 14px;
+  margin: 6px 6px 6px 0;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: var(--colour-brand);
+  color: #fff;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+input {
+  font: inherit;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #1b1b1b;
+  color: #fff;
+  width: 100%;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+select {
+  font: inherit;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #1b1b1b;
+  color: #fff;
+}

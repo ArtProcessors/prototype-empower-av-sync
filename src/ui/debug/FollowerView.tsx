@@ -1,3 +1,4 @@
+import styles from './debug.module.css'
 import { DebugPanel } from './DebugPanel'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { FollowerStatus } from './FollowerStatus'
@@ -8,7 +9,7 @@ import type { SessionViewProps } from '../view-props'
 /** The listener's screen: live drift from the screen, plus session controls. */
 export function FollowerView({ state, session, transport }: SessionViewProps) {
   return (
-    <main className="wrap">
+    <main className={styles.wrap}>
       <SessionTopBar
         role={transport.role}
         roomCode={transport.roomCode}
@@ -17,7 +18,7 @@ export function FollowerView({ state, session, transport }: SessionViewProps) {
 
       <KeepAwakeOption state={state} session={session} />
 
-      <p className="muted">
+      <p className={styles.muted}>
         Put on headphones — your audio is kept in sync with the screen's video.
         The big number is your live drift from the screen.
       </p>

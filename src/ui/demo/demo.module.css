@@ -1,0 +1,158 @@
+/*
+ * The demo UI's shell, its two controls and its copy — the vocabulary the
+ * consumer-facing views are built from.
+ *
+ * This half of the app shares the palette in `src/global.css` with the debug
+ * instrument and nothing else. `.shell` adds the demo's own greys, which are
+ * cooler and darker than the instrument's; they are declared on the shell
+ * rather than in `:root` because every demo view mounts inside it and nothing
+ * outside it should inherit them.
+ */
+.shell {
+  --demo-dim: #9a9a9e;
+  --demo-dimmer: #7a7a7e;
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #0b0b0c;
+  color: var(--colour-text);
+}
+
+/* Both single-column views — the screen's one setup step and the listener's
+   whole interface — put their content in the space that is left once the
+   footer has taken what it needs. */
+.view {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding-inline: max(20px, env(safe-area-inset-left))
+    max(20px, env(safe-area-inset-right));
+  padding-block-start: max(16px, env(safe-area-inset-top));
+}
+.centre {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  min-block-size: 0;
+  padding-block: 24px;
+  text-align: center;
+}
+
+/* -- The one button ------------------------------------------------------ */
+.action {
+  inline-size: min(62vw, 15rem);
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, #4478ea, #2145a8);
+  color: #fff;
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 14px 44px rgb(42 91 215 / 0.35);
+  transition: transform 120ms ease;
+}
+.action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.action:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 6px;
+}
+
+/* -- Quiet controls ------------------------------------------------------ */
+.ghost {
+  margin: 0;
+  padding: 10px 16px;
+  /* WCAG 2.5.8: a touch target that content can grow but not shrink. */
+  min-block-size: 44px;
+  border: 1px solid #303034;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--demo-dim);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.ghost:hover:not(:disabled) {
+  border-color: #55555c;
+  color: var(--colour-text);
+}
+.ghost:focus-visible {
+  outline: 2px solid var(--colour-info);
+  outline-offset: 2px;
+}
+/* Promoted once a problem has stopped looking transient. Applied alongside
+   `.ghost`, so it has to come after it to win on source order. */
+.ghostUrgent {
+  border-color: var(--colour-brand);
+  background: var(--colour-brand);
+  color: #fff;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-block: 14px;
+  padding-block-end: max(14px, env(safe-area-inset-bottom));
+  border-top: 1px solid #1c1c1e;
+}
+.room {
+  color: var(--demo-dimmer);
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* -- Copy ---------------------------------------------------------------- */
+.lede {
+  margin: 0;
+  max-inline-size: 24rem;
+  color: var(--demo-dim);
+  text-wrap: pretty;
+}
+.hint {
+  margin: 0;
+  color: var(--demo-dimmer);
+  font-size: 0.9rem;
+}
+.hintUrgent {
+  color: var(--colour-warn);
+}
+.error {
+  margin: 0;
+  max-inline-size: 26rem;
+  padding: 10px 14px;
+  border: 1px solid #6b2a2a;
+  border-radius: 10px;
+  background: #2a1414;
+  color: #f8a1a1;
+  text-wrap: pretty;
+}
+.field {
+  display: grid;
+  gap: 6px;
+  inline-size: min(100%, 18rem);
+  text-align: start;
+}
+.fieldLabel {
+  color: var(--demo-dimmer);
+  font-size: 0.85rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition: none;
+  }
+}

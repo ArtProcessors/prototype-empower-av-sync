@@ -1,0 +1,166 @@
+/*
+ * The debug instrument's chrome: the card-and-rows layout the `?debug=1` UI is
+ * built out of, plus the drift hero the follower view reads.
+ *
+ * Shared by every component under `src/ui/debug`, which is why it is one
+ * module rather than one per component — these are the instrument's vocabulary,
+ * not any single view's. Anything only one component uses lives beside it
+ * instead (see `DiagnosticsPanel.module.css`).
+ *
+ * Bare form controls are still styled globally, in `src/global.css`: both UIs
+ * render them unclassed and share those defaults.
+ */
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* -- Text ---------------------------------------------------------------- */
+.muted {
+  color: var(--colour-text-muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.hint {
+  color: #7a7;
+  font-size: 0.85rem;
+}
+.error {
+  color: #f77;
+}
+
+/* -- Blocks -------------------------------------------------------------- */
+.card {
+  border: 1px solid var(--colour-border);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 12px 0;
+  background: #171717;
+}
+.field {
+  display: block;
+  margin: 8px 0;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  cursor: pointer;
+  user-select: none;
+}
+/* Undoes the full-width text-input defaults for the checkbox inside. */
+.check input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--colour-brand);
+}
+
+/* -- Session banner ------------------------------------------------------ */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--colour-border);
+}
+.roomcode {
+  letter-spacing: 0.15em;
+  font-weight: bold;
+}
+/* The screen shows the code to a room; a listener only confirms it. */
+.roomcodeBig {
+  font-size: 1.4rem;
+}
+/* Beats the global `button` background on class specificity alone. */
+.ghost {
+  background: transparent;
+}
+
+/* -- The screen's video and join code ------------------------------------ */
+.videoWrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+/* The persistent screen video carries no styling of its own — see
+   core/screen-output.ts — so each host sizes it. Letterboxed here. Global
+   because the element is built outside React and carries `SCREEN_VIDEO_CLASS`
+   precisely so a host can reach it from CSS. */
+.videoWrap :global(.screen-video) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.share {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.connecting {
+  margin: 12px 0;
+  padding: 12px;
+  background: #2a2410;
+  border: 1px solid var(--colour-caution-border);
+  border-radius: 8px;
+  color: var(--colour-caution-text);
+}
+
+/* -- Drift readout ------------------------------------------------------- */
+/* The band colour comes in alongside these, from `ui/drift.module.css`. */
+.driftHero {
+  text-align: center;
+  padding: 24px;
+  margin: 12px 0;
+  border-radius: 12px;
+  border: 1px solid var(--colour-border);
+  background: #141414;
+}
+.driftNumber {
+  font-size: 3rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.driftUnit {
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--colour-text-muted);
+}
+
+/* -- Instrument panels --------------------------------------------------- */
+.panel {
+  margin-top: 20px;
+  border: 1px dashed #555;
+  border-radius: 10px;
+  padding: 12px;
+  background: #0d0d0d;
+  font-size: 0.9rem;
+}
+.panel h2 {
+  margin-top: 0;
+  color: var(--colour-info);
+}
+.row {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--colour-rule);
+}
+.rowKey {
+  width: 120px;
+  color: var(--colour-text-dim);
+  flex-shrink: 0;
+}
+.rowValue {
+  flex: 1;
+  word-break: break-word;
+}

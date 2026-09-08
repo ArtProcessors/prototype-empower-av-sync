@@ -1,0 +1,103 @@
+/*
+ * The demo screen: video edge to edge, QR code over it.
+ *
+ * Everything here is an overlay on the picture a room full of people is
+ * looking at, so each one earns its place — the QR card permanently, the
+ * alert and the operator's controls only when they are wanted.
+ */
+.screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.stage {
+  inline-size: 100%;
+  block-size: 100%;
+  background: #000;
+}
+/* The persistent screen video carries no styling of its own — see
+   core/screen-output.ts — so each host sizes it. Filled here, not letterboxed.
+   Global because the element is built outside React and carries
+   `SCREEN_VIDEO_CLASS` precisely so a host can reach it from CSS. */
+.stage :global(.screen-video) {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.qr {
+  position: absolute;
+  inset-block-end: max(24px, env(safe-area-inset-bottom));
+  inset-inline-end: max(24px, env(safe-area-inset-right));
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.94);
+  color: #111;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+/* Generated at QR_RESOLUTION and scaled down here, so it stays crisp. */
+.qr img {
+  display: block;
+  inline-size: clamp(120px, 15vmin, 240px);
+  block-size: auto;
+  border-radius: 6px;
+}
+.qrCaption {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.qrCode {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  /* Offsets the trailing letter-space, which would otherwise sit the text
+     half a gap left of centre. */
+  text-indent: 0.2em;
+  letter-spacing: 0.2em;
+}
+/* Opposite corner from the QR and below the controls, so it can never land on
+   either however narrow the display is. */
+.alert {
+  position: absolute;
+  inset-block-end: max(24px, env(safe-area-inset-bottom));
+  inset-inline-start: max(24px, env(safe-area-inset-left));
+  max-inline-size: min(30rem, 45vw);
+  margin: 0;
+  padding: 10px 16px;
+  border: 1px solid var(--colour-caution-border);
+  border-radius: 14px;
+  background: rgb(43 36 16 / 0.94);
+  color: var(--colour-caution-text);
+  text-wrap: pretty;
+}
+/* Reachable but never part of the picture: barely there until pointed at or
+   tabbed into. */
+.controls {
+  position: absolute;
+  inset-block-start: max(16px, env(safe-area-inset-top));
+  inset-inline-end: max(16px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.5);
+  opacity: 0.18;
+  transition: opacity 180ms ease;
+}
+.controls:hover,
+.controls:focus-within {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls {
+    transition: none;
+  }
+}

@@ -1,4 +1,11 @@
+import { classNames } from '../class-names'
 import type { ViewProps } from '../view-props'
+import styles from './demo.module.css'
+
+type Props = ViewProps & {
+  /** Called when this device should join as a listener instead. */
+  onListen: () => void
+}
 
 /**
  * The one setup step before the demo screen goes full-bleed: pick the video
@@ -9,31 +16,24 @@ import type { ViewProps } from '../view-props'
  * network. This is the only operator-facing surface in the demo UI; from the
  * moment it is pressed, nothing but the video and the QR is on screen.
  */
-export function DemoScreenStart({
-  state,
-  session,
-  onListen,
-}: ViewProps & {
-  /** Called when this device should join as a listener instead. */
-  onListen: () => void
-}) {
+export function DemoScreenStart({ state, session, onListen }: Props) {
   const connecting = state.phase === 'connecting'
 
   return (
-    <main className="demo demo-start">
-      <div className="demo-center">
-        <p className="demo-lede">
+    <main className={classNames(styles.shell, styles.view)}>
+      <div className={styles.centre}>
+        <p className={styles.lede}>
           Start the screen, then let people scan the code to hear it.
         </p>
 
         {state.error && (
-          <p className="demo-error" role="alert">
+          <p className={styles.error} role="alert">
             ⚠ {state.error}
           </p>
         )}
 
-        <label className="demo-field">
-          <span className="demo-field-label">Video</span>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Video</span>
           <select
             value={state.media.selectedId}
             onChange={event => session.selectVideo(event.target.value)}
@@ -47,7 +47,7 @@ export function DemoScreenStart({
         </label>
 
         <button
-          className="demo-action"
+          className={styles.action}
           disabled={connecting}
           onClick={() => session.becomeScreen()}
         >
@@ -55,8 +55,8 @@ export function DemoScreenStart({
         </button>
       </div>
 
-      <footer className="demo-footer">
-        <button className="demo-ghost" onClick={onListen}>
+      <footer className={styles.footer}>
+        <button className={styles.ghost} onClick={onListen}>
           Listen on this device instead
         </button>
       </footer>

@@ -1,6 +1,14 @@
 import type { AudioWaveform } from '../../media/audio-waveform'
 import type { DemoStatus } from './demo-status'
 import { DemoWaveformRing } from './DemoWaveformRing'
+import styles from './DemoStatusDisplay.module.css'
+
+type Props = {
+  /** What to say, and how it should read. */
+  status: DemoStatus
+  /** Live samples of this device's audio output, for the `good` state's ring. */
+  waveform: AudioWaveform
+}
 
 /**
  * The listener's whole instrument panel: one ring and one sentence.
@@ -15,27 +23,21 @@ import { DemoWaveformRing } from './DemoWaveformRing'
  * The ring is decorative either way, and hidden from assistive tech, because
  * the live region beside it already says everything it does.
  */
-export function DemoStatusDisplay({
-  status,
-  waveform,
-}: {
-  /** What to say, and how it should read. */
-  status: DemoStatus
-  /** Live samples of this device's audio output, for the `good` state's ring. */
-  waveform: AudioWaveform
-}) {
+export function DemoStatusDisplay({ status, waveform }: Props) {
   return (
-    <div className="demo-status">
+    <div className={styles.status}>
       <div
-        className="demo-indicator"
+        className={styles.indicator}
         data-tone={status.tone}
         aria-hidden="true"
       >
-        {status.tone === 'good' && <DemoWaveformRing waveform={waveform} />}
+        {status.tone === 'good' && (
+          <DemoWaveformRing waveform={waveform} className={styles.ring} />
+        )}
       </div>
-      <div className="demo-status-text" role="status" aria-live="polite">
-        <p className="demo-headline">{status.headline}</p>
-        {status.detail && <p className="demo-detail">{status.detail}</p>}
+      <div role="status" aria-live="polite">
+        <p className={styles.headline}>{status.headline}</p>
+        {status.detail && <p className={styles.detail}>{status.detail}</p>}
       </div>
     </div>
   )

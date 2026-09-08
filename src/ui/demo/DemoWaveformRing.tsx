@@ -148,6 +148,13 @@ function paint(
   context.stroke()
 }
 
+type Props = {
+  /** Live samples of this device's audio output. */
+  waveform: AudioWaveform
+  /** Class positioning and sizing the canvas, from the containing indicator. */
+  className: string
+}
+
 /**
  * The listener's "in sync" ring: a circle deflected by the audio actually
  * coming out of this device.
@@ -162,8 +169,12 @@ function paint(
  * display falls back to its still check mark. It also survives having nothing
  * to read — an iOS `<audio>` fallback has no graph to tap — by resting at the
  * base circle, which looks deliberate rather than broken.
+ *
+ * Carries no styling of its own: where the canvas sits, how large it is and
+ * what colour it inherits are the indicator's decisions, so the class comes in
+ * from `DemoStatusDisplay.module.css`.
  */
-export function DemoWaveformRing({ waveform }: { waveform: AudioWaveform }) {
+export function DemoWaveformRing({ waveform, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const reducedMotion = useReducedMotion()
 
@@ -254,5 +265,5 @@ export function DemoWaveformRing({ waveform }: { waveform: AudioWaveform }) {
     return null
   }
 
-  return <canvas ref={canvasRef} className="demo-ring" />
+  return <canvas ref={canvasRef} className={className} />
 }

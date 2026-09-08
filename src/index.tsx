@@ -1,8 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+// First, deliberately: Vite emits CSS in module-graph order, and the reset and
+// element defaults are the layer every CSS Module is written to sit on top of.
+import './global.css'
 import { App } from './ui/App'
-import './styles.css'
 
 // Service worker registration is production-only; use
 // `yarn build && yarn preview` for offline testing.

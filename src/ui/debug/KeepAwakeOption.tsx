@@ -1,3 +1,4 @@
+import styles from './debug.module.css'
 import type { ViewProps } from '../view-props'
 
 /**
@@ -12,7 +13,7 @@ export function KeepAwakeOption({ state, session }: ViewProps) {
   }
 
   return (
-    <label className="check">
+    <label className={styles.check}>
       <input
         type="checkbox"
         checked={enabled}
@@ -20,7 +21,7 @@ export function KeepAwakeOption({ state, session }: ViewProps) {
       />
       <span>
         Keep screen awake
-        {held && <span className="muted"> (active)</span>}
+        {held && <span className={styles.muted}> (active)</span>}
       </span>
     </label>
   )

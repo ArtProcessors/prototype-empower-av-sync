@@ -1,6 +1,9 @@
 import { joinUrl } from '../../core/join-link'
+import { classNames } from '../class-names'
 import { QRCode } from '../QRCode'
 import type { SessionViewProps } from '../view-props'
+import demo from './demo.module.css'
+import styles from './DemoScreenView.module.css'
 
 /**
  * Resolution the join QR is generated at.
@@ -10,6 +13,11 @@ import type { SessionViewProps } from '../view-props'
  * phones hunt for. Generating large and scaling down stays crisp at any size.
  */
 const QR_RESOLUTION = 512
+
+type Props = SessionViewProps & {
+  /** Ref callback that mounts the persistent screen video into a container. */
+  mountScreenVideo: (container: HTMLElement | null) => void
+}
 
 /**
  * The demo screen: the video, edge to edge, and the code to scan.
@@ -23,43 +31,40 @@ export function DemoScreenView({
   session,
   transport,
   mountScreenVideo,
-}: SessionViewProps & {
-  /** Ref callback that mounts the persistent screen video into a container. */
-  mountScreenVideo: (container: HTMLElement | null) => void
-}) {
+}: Props) {
   // No UI-mode marker: a demo screen's QR should send phones to the demo
   // follower, which is what a plain join link already does.
   const listenerUrl = joinUrl(transport.roomCode)
 
   return (
-    <main className="demo demo-screen">
+    <main className={classNames(demo.shell, styles.screen)}>
       {/* The persistent looping video is mounted here. */}
-      <div className="demo-stage" ref={mountScreenVideo} />
+      <div className={styles.stage} ref={mountScreenVideo} />
 
-      <div className="demo-qr">
+      <div className={styles.qr}>
         <QRCode value={listenerUrl} size={QR_RESOLUTION} />
-        <p className="demo-qr-caption">Scan for audio</p>
-        <p className="demo-qr-code">{transport.roomCode}</p>
+        <p className={styles.qrCaption}>Scan for audio</p>
+        <p className={styles.qrCode}>{transport.roomCode}</p>
       </div>
 
       {!transport.signallingOnline && (
-        <p className="demo-screen-alert" role="status">
+        <p className={styles.alert} role="status">
           Reconnecting — nobody new can join for a moment. Listeners already
           connected are unaffected.
         </p>
       )}
 
-      <div className="demo-screen-controls">
-        <span className="demo-room">{transport.peerCount} listening</span>
+      <div className={styles.controls}>
+        <span className={demo.room}>{transport.peerCount} listening</span>
 
         <button
-          className="demo-ghost"
+          className={demo.ghost}
           onClick={() => window.location.reload()}
         >
           Refresh
         </button>
 
-        <button className="demo-ghost" onClick={() => session.leave()}>
+        <button className={demo.ghost} onClick={() => session.leave()}>
           Stop
         </button>
       </div>

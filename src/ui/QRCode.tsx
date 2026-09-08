@@ -2,16 +2,15 @@ import { useEffect, useState } from 'react'
 
 import QR from 'qrcode'
 
-/** Renders `value` as a QR code locally (no network → offline-safe). */
-export function QRCode({
-  value,
-  size = 160,
-}: {
+type Props = {
   /** Text encoded into the QR code — here, the listener join URL. */
   value: string
   /** Rendered width and height, in pixels. */
   size?: number
-}) {
+}
+
+/** Renders `value` as a QR code locally (no network → offline-safe). */
+export function QRCode({ value, size = 160 }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
 
   useEffect(() => {

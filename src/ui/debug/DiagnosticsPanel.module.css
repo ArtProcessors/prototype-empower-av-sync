@@ -1,0 +1,53 @@
+/*
+ * The connection log: a dense, monospaced list of what the transport and the
+ * page lifecycle did, one colour per subsystem.
+ *
+ * Only the categories worth picking out of a long log are coloured — see
+ * `CATEGORY_TONE` in the component. Everything else keeps `.category`'s grey.
+ */
+.actions {
+  margin: 8px 0 4px;
+}
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.log li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--colour-rule);
+}
+.time {
+  color: #666;
+  flex-shrink: 0;
+}
+.category {
+  width: 68px;
+  flex-shrink: 0;
+  color: var(--colour-text-dim);
+}
+.categoryIce {
+  color: var(--colour-info);
+}
+.categoryPeer {
+  color: #f0b429;
+}
+.categoryPage {
+  color: #c58af9;
+}
+.categoryTimer {
+  color: var(--colour-bad);
+}
+.categoryTransport {
+  color: #7ad7a0;
+}
+.message {
+  flex: 1;
+  word-break: break-word;
+}

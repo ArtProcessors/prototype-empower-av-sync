@@ -306,13 +306,14 @@ checks; `yarn format:check` runs Prettier.
 ## Videos & adding your own
 
 The leader picks the video from a dropdown; the choice is broadcast in each beat (`mediaId`)
-so followers load the matching audio. Three options ship (`src/content/index.ts`):
+so followers load the matching audio. Four options ship (`src/content/index.ts`):
 
-| id       | Video (screen)                         | Audio (followers)               | Delivery                                                  |
-| -------- | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
-| `test`   | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline)                  |
-| `soh`    | `soh.mp4` (~127 MB H.264)              | `soh.m4a` (~14 MB)              | remote (`content.dev.pladia.live`), **`streaming: true`** |
-| `sync45` | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, **`streaming: true`**                             |
+| id         | Video (screen)                         | Audio (followers)               | Delivery                                                  |
+| ---------- | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| `test`     | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline)                  |
+| `agent327` | `agent-327.mp4` (~38 MB H.264, 3m52s)  | `agent-327.m4a` (~3.6 MB)       | remote (`content.dev.pladia.live`), **`streaming: true`** |
+| `soh`      | `soh.mp4` (~127 MB H.264)              | `soh.m4a` (~14 MB)              | remote (`content.dev.pladia.live`), **`streaming: true`** |
+| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, **`streaming: true`**                             |
 
 **Followers only ever download the audio** — the screen fetches the video, each follower only
 the soundtrack (e.g. ~14 MB vs ~127 MB for `soh`). With `streaming: true` the follower doesn't
@@ -320,7 +321,7 @@ even fetch the whole soundtrack up front: it pulls ~60 s of compressed audio at 
 1.3× the audio bitrate sustained (~20 KB/s at ~128 kbps), for as long as it's listening.
 
 A `videoUrl`/`soundtrackUrl` can be a bundled import (precached), a `public/media/` path
-(served by path, runtime-cached), or an absolute URL on static hosting — the two long options
+(served by path, runtime-cached), or an absolute URL on static hosting — the three remote options
 use the last. Absolute URLs used by a `streaming` entry **must** serve `Accept-Ranges: bytes`
 and permissive CORS.
 
@@ -330,7 +331,8 @@ then add an entry to `VIDEOS`. From a source file:
 ```bash
 # audio the followers play (stream-copy the AAC → identical timeline, tiny download):
 ffmpeg -i source.mov -vn -c:a copy -movflags +faststart mine.m4a
-# video the screen plays — transcode to H.264 if the source is HEVC/H.265 (Chrome can't decode HEVC):
+# video the screen plays — transcode to H.264 if the source is HEVC/H.265 (Chrome can't
+# decode HEVC) or AV1 (Safari decodes AV1 only on M3+/A17-class hardware):
 ffmpeg -i source.mov -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -c:a copy -movflags +faststart mine.mp4
 ```
 

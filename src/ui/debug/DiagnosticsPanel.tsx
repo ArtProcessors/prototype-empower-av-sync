@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
 
+import type { DiagnosticCategory } from '../../diagnostics/session-log'
 import {
   clearDiagnostics,
   diagnosticEvents,
@@ -7,9 +8,29 @@ import {
   subscribeDiagnostics,
 } from '../../diagnostics/session-log'
 import { summariseDiagnostics } from '../../diagnostics/summary'
+import { classNames } from '../class-names'
+import debug from './debug.module.css'
+import styles from './DiagnosticsPanel.module.css'
 
 /** How many of the most recent events the panel renders. */
 const VISIBLE_EVENTS = 60
+
+/**
+ * Colour for the categories worth picking out of a long log at a glance.
+ *
+ * Deliberately partial: `audio`, `beat` and `net` keep the column's default
+ * grey, because a sleep test is read by scanning for the transport and page
+ * lifecycle events between them. Spelled out rather than built from the
+ * category name so an added category is a compile-time decision, not a silently
+ * missing class.
+ */
+const CATEGORY_TONE: Partial<Record<DiagnosticCategory, string>> = {
+  ice: styles.categoryIce,
+  page: styles.categoryPage,
+  peer: styles.categoryPeer,
+  timer: styles.categoryTimer,
+  transport: styles.categoryTransport,
+}
 
 function formatClockTime(at: number): string {
   const time = new Date(at)
@@ -41,41 +62,48 @@ export function DiagnosticsPanel() {
   }
 
   return (
-    <section className="debug diag">
+    <section className={debug.panel}>
       <h2>Debug — connection log</h2>
 
-      <div className="dbg-row">
-        <span className="dbg-key">summary</span>
-        <span className="dbg-val">
+      <div className={debug.row}>
+        <span className={debug.rowKey}>summary</span>
+        <span className={debug.rowValue}>
           {summary.freezes} freezes · {summary.peerLeaves} peer leaves ·{' '}
           {summary.rejoins} rejoins · longest stall{' '}
           {summary.longestStallSec.toFixed(1)}s
         </span>
       </div>
 
-      <div className="diag-actions">
-        <button className="ghost" onClick={copy}>
+      <div className={styles.actions}>
+        <button className={debug.ghost} onClick={copy}>
           {copied ? '✓ Copied' : `Copy log (${events.length})`}
         </button>
-        <button className="ghost" onClick={clearDiagnostics}>
+        <button className={debug.ghost} onClick={clearDiagnostics}>
           Clear
         </button>
       </div>
 
-      <ol className="diag-log">
+      <ol className={styles.log}>
         {recent.map(event => (
           <li key={`${event.at}-${event.message}`}>
-            <span className="diag-time">{formatClockTime(event.at)}</span>
-            <span className={`diag-cat diag-cat-${event.category}`}>
+            <span className={styles.time}>{formatClockTime(event.at)}</span>
+            <span
+              className={classNames(
+                styles.category,
+                CATEGORY_TONE[event.category],
+              )}
+            >
               {event.category}
             </span>
-            <span className="diag-msg">
+            <span className={styles.message}>
               {event.message}
-              {event.hidden && <span className="muted"> · hidden</span>}
+              {event.hidden && <span className={debug.muted}> · hidden</span>}
             </span>
           </li>
         ))}
-        {!recent.length && <li className="muted">No events recorded yet.</li>}
+        {!recent.length && (
+          <li className={debug.muted}>No events recorded yet.</li>
+        )}
       </ol>
     </section>
   )

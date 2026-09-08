@@ -1,13 +1,19 @@
 import type { ReactNode } from 'react'
 
 import { driftClassName, formatSignedDrift } from '../drift'
+import styles from './debug.module.css'
 import type { SessionViewProps } from '../view-props'
 
-function DebugRow({ label, value }: { label: string; value: ReactNode }) {
+type Props = {
+  label: string
+  value: ReactNode
+}
+
+function DebugRow({ label, value }: Props) {
   return (
-    <div className="dbg-row">
-      <span className="dbg-key">{label}</span>
-      <span className="dbg-val">{value}</span>
+    <div className={styles.row}>
+      <span className={styles.rowKey}>{label}</span>
+      <span className={styles.rowValue}>{value}</span>
     </div>
   )
 }
@@ -24,7 +30,7 @@ export function DebugPanel({ state, transport }: SessionViewProps) {
       : (transport.latestBeat?.mediaId ?? '—')
 
   return (
-    <section className="debug">
+    <section className={styles.panel}>
       <h2>Debug — sync state</h2>
       <DebugRow label="role" value={<b>{transport.role}</b>} />
       <DebugRow label="room" value={<code>{transport.roomCode}</code>} />

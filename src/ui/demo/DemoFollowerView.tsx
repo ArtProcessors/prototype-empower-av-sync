@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
 import type { SyncSessionState } from '../../core/session-state'
+import { classNames } from '../class-names'
 import type { ViewProps } from '../view-props'
+import styles from './demo.module.css'
 import { followerStatus } from './demo-status'
 import { DemoStatusDisplay } from './DemoStatusDisplay'
 
@@ -64,6 +66,18 @@ function useScreenContact(state: SyncSessionState): boolean {
   return hadContact
 }
 
+type Props = ViewProps & {
+  /**
+   * Room this device was invited to, from the scanned link or the room it was
+   * in before a reload. `null` when it arrived with no invitation at all, and
+   * `''` when the link carried an explicitly empty room; both mean the code
+   * has to be typed.
+   */
+  invitedRoom: string | null
+  /** Called when this device should lead as the screen instead. */
+  onSetUpScreen: () => void
+}
+
 /**
  * The listener's screen: one button to start, then one line of status.
  *
@@ -76,17 +90,7 @@ export function DemoFollowerView({
   session,
   invitedRoom,
   onSetUpScreen,
-}: ViewProps & {
-  /**
-   * Room this device was invited to, from the scanned link or the room it was
-   * in before a reload. `null` when it arrived with no invitation at all, and
-   * `''` when the link carried an explicitly empty room; both mean the code
-   * has to be typed.
-   */
-  invitedRoom: string | null
-  /** Called when this device should lead as the screen instead. */
-  onSetUpScreen: () => void
-}) {
+}: Props) {
   const [code, setCode] = useState(invitedRoom ?? '')
   const hadContact = useScreenContact(state)
   const status = followerStatus(state, hadContact)
@@ -95,22 +99,22 @@ export function DemoFollowerView({
   const roomCode = state.transport?.roomCode ?? null
 
   return (
-    <main className="demo demo-follower">
-      <div className="demo-center">
+    <main className={classNames(styles.shell, styles.view)}>
+      <div className={styles.centre}>
         {started ? (
           <DemoStatusDisplay status={status} waveform={session.waveform} />
         ) : (
           <>
             {status.tone === 'error' && (
-              <p className="demo-error" role="alert">
+              <p className={styles.error} role="alert">
                 {status.headline}
                 {status.detail && ` — ${status.detail}`}
               </p>
             )}
 
             {!invitedRoom && (
-              <label className="demo-field">
-                <span className="demo-field-label">Room code</span>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Room code</span>
                 <input
                   value={code}
                   // Upper-casing only, deliberately not the full
@@ -126,44 +130,44 @@ export function DemoFollowerView({
             )}
 
             <button
-              className="demo-action"
+              className={styles.action}
               disabled={!isRoomCodeAcceptable(code)}
               onClick={() => session.join(code)}
             >
               Listen
             </button>
 
-            <p className="demo-hint">
+            <p className={styles.hint}>
               Put your headphones on, then tap to start.
             </p>
           </>
         )}
 
         {stuck && (
-          <p className="demo-hint demo-hint-urgent">
+          <p className={classNames(styles.hint, styles.hintUrgent)}>
             Still stuck? Refresh to start over.
           </p>
         )}
       </div>
 
-      <footer className="demo-footer">
-        {roomCode && <span className="demo-room">Room {roomCode}</span>}
+      <footer className={styles.footer}>
+        {roomCode && <span className={styles.room}>Room {roomCode}</span>}
 
         <button
-          className={stuck ? 'demo-ghost demo-ghost-urgent' : 'demo-ghost'}
+          className={classNames(styles.ghost, stuck && styles.ghostUrgent)}
           onClick={() => window.location.reload()}
         >
           Refresh
         </button>
 
         {started && (
-          <button className="demo-ghost" onClick={() => session.leave()}>
+          <button className={styles.ghost} onClick={() => session.leave()}>
             Stop
           </button>
         )}
 
         {!started && !invitedRoom && (
-          <button className="demo-ghost" onClick={onSetUpScreen}>
+          <button className={styles.ghost} onClick={onSetUpScreen}>
             Set up the screen
           </button>
         )}

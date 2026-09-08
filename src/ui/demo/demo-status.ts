@@ -16,7 +16,8 @@ import type { SyncSessionState } from '../../core/session-state'
 
 /**
  * How a status should read, calmest first. Maps to a colour and, for `busy`,
- * a spinner — see the `.demo-indicator` rules in `styles.css`.
+ * a spinner — see the `.indicator` rules in
+ * `DemoStatusDisplay.module.css`.
  */
 export type DemoTone = 'idle' | 'busy' | 'good' | 'warn' | 'error'
 

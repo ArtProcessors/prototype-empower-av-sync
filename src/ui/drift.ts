@@ -1,4 +1,5 @@
 import { driftBand } from '../core/drift'
+import styles from './drift.module.css'
 
 /**
  * CSS class banding a drift reading as good / warning / bad, so the hero
@@ -6,7 +7,7 @@ import { driftBand } from '../core/drift'
  * thresholds themselves are session policy — see `core/drift.ts`.
  */
 export function driftClassName(driftMs: number): string {
-  return `drift-${driftBand(driftMs)}`
+  return styles[driftBand(driftMs)]
 }
 
 /**
