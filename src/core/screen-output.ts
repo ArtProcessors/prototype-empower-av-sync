@@ -105,6 +105,52 @@ export interface DomScreenVideoOutput extends ScreenVideoOutput {
 }
 
 /**
+ * How long a retried `play()` waits for a loading element, in ms.
+ *
+ * Only ever reached when a first attempt was refused by an element that had
+ * nothing to play yet, so this is the budget for a first fetch of a long-form
+ * video's opening bytes over a venue network. Bounded rather than open-ended
+ * so a source that never arrives fails through the element's own error
+ * instead of leaving `becomeScreen` waiting on an event that is not coming.
+ */
+const PLAYABLE_TIMEOUT_MS = 10_000
+
+/**
+ * Resolve once `element` can play, has failed to load, or `timeoutMs` has
+ * passed.
+ *
+ * Deliberately never rejects. Whatever the element does next, the caller's
+ * job is the same — ask it to play once more — and letting *that* call raise
+ * the error keeps the message a UI ends up showing the browser's own rather
+ * than one invented here.
+ *
+ * @param element the video element to wait on
+ * @param timeoutMs how long to wait before giving up on the wait itself
+ */
+function whenPlayable(
+  element: HTMLVideoElement,
+  timeoutMs: number,
+): Promise<void> {
+  if (element.readyState >= element.HAVE_FUTURE_DATA) {
+    return Promise.resolve()
+  }
+
+  return new Promise(resolve => {
+    const settle = () => {
+      element.removeEventListener('canplay', settle)
+      element.removeEventListener('error', settle)
+      window.clearTimeout(timer)
+      resolve()
+    }
+
+    const timer = window.setTimeout(settle, timeoutMs)
+
+    element.addEventListener('canplay', settle)
+    element.addEventListener('error', settle)
+  })
+}
+
+/**
  * Build the screen's persistent video element. Call once, before any gesture:
  * the element has to exist and be reusable by the time someone taps.
  *
@@ -139,18 +185,30 @@ export function createDomScreenVideo(
         element.src = option.videoUrl
       }
 
-      // Start playback inside the gesture. The first play() can reject while
-      // the freshly assigned src is still loading, so retry once — by then the
-      // element has the gesture's autoplay permission either way.
-      //
-      // A second rejection is the browser refusing rather than racing — iOS
-      // Low Power Mode blocks even muted autoplay — and it is thrown, not
-      // swallowed. `becomeScreen` catches it before it opens a room, so a
-      // refusal lands back on the start screen with a tap to offer instead of
-      // going active over a picture that never moved.
+      // Asked synchronously, inside the gesture: iOS grants autoplay to the
+      // call that happens in the tap and to nothing after it, so this cannot
+      // wait for the element to be ready first. The permission it wins is the
+      // element's from then on, which is what lets the retry below re-ask.
       try {
         await element.play()
       } catch {
+        // One retry, as before — but not in the same turn as the rejection it
+        // is answering. The old comment justified an immediate second attempt
+        // by saying the element had the gesture's permission by then, which
+        // is sound for the tap and unsound for `?autostart=1`, the one path
+        // with no gesture behind it at all. An element that has just been
+        // given a source has nothing to play yet, and asking it twice in the
+        // same turn asks the same unanswerable question twice.
+        //
+        // This resolves immediately when the element could already play, so a
+        // refusal from a loaded element is still re-raised at once.
+        await whenPlayable(element, PLAYABLE_TIMEOUT_MS)
+
+        // Deliberately not caught. A second rejection is the browser refusing
+        // rather than racing — iOS Low Power Mode blocks even muted autoplay
+        // — and `becomeScreen` catches it before it opens a room, so a
+        // refusal lands back on the start screen with a tap to offer instead
+        // of going active over a picture that never moved.
         await element.play()
       }
     },

@@ -425,24 +425,16 @@ export function DemoScreenGallery() {
   const showsLive = scenario.surface === 'live' || (leading && !held)
 
   useEffect(() => {
-    if (!showsLive) {
-      return
+    if (showsLive) {
+      // Muted and inline, so this is allowed to start with no gesture behind
+      // it — the same permission an `?autostart=1` display comes up on, and
+      // the path whose retry `createDomScreenVideo` has to get right. A
+      // refusal here is the browser's, and there is nowhere in a gallery to
+      // report it.
+      galleryVideo()
+        .play(mediaById(CONTENT_CATALOGUE, shownVideoId))
+        .catch(() => {})
     }
-
-    const video = galleryVideo()
-    const element = video.element
-    // Muted and inline, so nothing has to be asked for — but `play()` issued
-    // while a freshly assigned source is still loading is rejected, and the
-    // retry inside `createDomScreenVideo` is immediate, which outside a
-    // gesture is early enough to be refused again. Asking once more when the
-    // element says it can play is what opens a live scenario on a moving
-    // picture rather than a first frame.
-    const start = () => video.resume()
-
-    video.play(mediaById(CONTENT_CATALOGUE, shownVideoId)).catch(start)
-    element.addEventListener('canplay', start)
-
-    return () => element.removeEventListener('canplay', start)
   }, [showsLive, shownVideoId])
 
   return (
