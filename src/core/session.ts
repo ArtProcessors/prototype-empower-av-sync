@@ -39,6 +39,7 @@ import {
   mediaById,
   type MediaCatalogue,
 } from './media-catalogue'
+import { readLedVideo, writeLedVideo } from './media-memory'
 import {
   createKeepAwakeController,
   type KeepAwakeController,
@@ -112,6 +113,22 @@ export interface SyncSession {
   dispose(): void
 }
 
+/**
+ * What the screen leads with before anyone chooses: the video this device last
+ * led with, so a display that lost power comes back on the same content.
+ *
+ * Falls back to the catalogue's default when there is no memory, or when the
+ * memory names something this build no longer ships — the same forgiving
+ * lookup a beat from a newer screen gets.
+ */
+function initialVideoId(catalogue: MediaCatalogue): string {
+  const remembered = readLedVideo()
+
+  return remembered !== null && isKnownMedia(catalogue, remembered)
+    ? remembered
+    : catalogue.defaultId
+}
+
 /** Build an A/V sync session. Joins no room until asked to. */
 export function createSyncSession(options: SyncSessionOptions): SyncSession {
   const catalogue = options.media
@@ -131,7 +148,7 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
   let phase: SyncSessionState['phase'] = 'landing'
   let error: string | null = null
-  let selectedVideoId: string = catalogue.defaultId
+  let selectedVideoId: string = initialVideoId(catalogue)
   let monitoring = false
   let screenWasPlaying = false
 
@@ -407,6 +424,9 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
         }))
 
         attachTransport(screen)
+        // Only once it is actually leading: a start that failed should not
+        // decide what this device comes back on.
+        writeLedVideo(option.id)
         phase = 'active'
         publishPhase()
         setSessionActive()

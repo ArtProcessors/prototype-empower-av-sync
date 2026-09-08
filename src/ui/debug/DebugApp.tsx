@@ -1,4 +1,5 @@
 import type { SyncBinding } from '../../hooks/useSync'
+import { useLaunchVideo } from '../useLaunchVideo'
 import { FollowerView } from './FollowerView'
 import { Landing } from './Landing'
 import { ScreenView } from './ScreenView'
@@ -12,6 +13,12 @@ import { ScreenView } from './ScreenView'
  * here, so the demo can stay free of it.
  */
 export function DebugApp({ state, session, mountScreenVideo }: SyncBinding) {
+  // The launch link works here too: adding `&debug=1` to a kiosk URL to see
+  // what a display is doing should not quietly change which video it plays.
+  // Only the error is passed on — the landing's picker stays, since being
+  // able to override the link is what this UI is for.
+  const launch = useLaunchVideo({ state, session })
+
   // Narrowed once here so the session views can take a non-null transport
   // rather than each re-asserting what this branch already established.
   if (state.phase === 'active' && state.transport) {
@@ -31,5 +38,5 @@ export function DebugApp({ state, session, mountScreenVideo }: SyncBinding) {
     )
   }
 
-  return <Landing state={state} session={session} />
+  return <Landing state={state} session={session} launchError={launch.error} />
 }

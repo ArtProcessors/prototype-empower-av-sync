@@ -62,9 +62,44 @@ parameter, read once per page load:
 A debug screen's QR carries `&debug=1`, so a phone scanning it lands in the debug follower;
 a demo screen's QR carries only the room. Nothing in `src/core` knows either exists.
 
+## Setting a screen up from its URL
+
+A display can be told what to be by the link it is switched on with, so an installed screen
+needs nobody standing at it. `src/ui/launch-intent.ts` is the one place the URL is read —
+once per page load, and frozen, which is why this is not a router.
+
+| Parameter      | Effect                                                                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `?video=<id>`  | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker. An id this build does not have is an error on screen, with the picker back. |
+| `?autostart`   | Start without waiting for a tap. `?autostart=0` / `=false` turn it off, like `?debug=`.                                                                     |
+| `?room=<code>` | Join as a listener — what the screen's QR carries.                                                                                                          |
+
+    /?video=soh&autostart=1     a wall display, set up once
+    /?video=soh                 the same, one tap to start
+    /?debug=1&video=soh         the same video, with the instrument panel
+
+**Autostart works because the screen is muted.** The leader's `<video>` is muted and inline,
+which browsers allow to autoplay unprompted; followers are untouched by this, since their
+audio still needs a real gesture. When a browser refuses anyway — iOS **Low Power Mode**
+blocks even muted autoplay — `play()` rejects, no room is opened, and the start screen comes
+back with the browser's reason and a tap to offer. That rejection is deliberately not
+swallowed: a screen that went active over a video that never started would broadcast
+`playing: false` to every follower and look, from across a room, like a poster.
+
+**Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins, even blank — a
+listener's audio is not something a URL can unlock, so `?room=` beats `?autostart=`. Failing
+that, `?autostart=` beats the room this device happens to remember, since a device asked to
+come up unattended was set up to be the screen.
+
+With no `?video=` at all, a screen leads with **whatever it last led with** — remembered in
+`localStorage` when a session actually starts, so a display that lost power comes back on the
+same content with no URL involved. A launch link overrides it; a memory naming a video this
+build no longer ships falls back to the catalogue default.
+
 ## Try it — demo
 
-1. On the display device, open the app, **pick a video**, and tap **Start**. The video goes
+1. On the display device, open the app, **pick a video**, and tap **Start** (or open
+   `/?video=<id>&autostart=1` and it does both itself). The video goes
    full-bleed and a QR card sits in the bottom-right corner. The operator controls (listener
    count, Refresh, Stop) sit top-right at low opacity and come up on hover or focus.
 2. On phones, scan the QR and tap **Listen** (the tap unlocks audio on iOS). Put on

@@ -2,7 +2,8 @@ import type { DomScreenVideoOptions } from '../core/screen-output'
 import { useSync } from '../hooks/useSync'
 import { DebugApp } from './debug/DebugApp'
 import { DemoApp } from './demo/DemoApp'
-import { currentUiMode, type UiMode } from './ui-mode'
+import { currentLaunchIntent } from './launch-intent'
+import type { UiMode } from './ui-mode'
 
 /**
  * Root view: binds the page's session and hands it to one of the two UIs.
@@ -10,9 +11,11 @@ import { currentUiMode, type UiMode } from './ui-mode'
  * Both are hosts over the same `src/core` session — the demo for consumers,
  * the debug UI (`?debug=1`) for development. The mode is read once, at module
  * evaluation, because the session and its `<video>` element are built on the
- * first render and cannot be rebuilt (see `core/screen-output.ts`).
+ * first render and cannot be rebuilt (see `core/screen-output.ts`). It comes
+ * from the same frozen read of the URL as everything else a launch link can
+ * say — see `launch-intent.ts`.
  */
-const UI_MODE = currentUiMode()
+const UI_MODE = currentLaunchIntent().ui
 
 /**
  * How each UI wants the screen's video element.

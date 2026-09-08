@@ -68,6 +68,9 @@ export {
   writeRejoinRoom,
 } from './rejoin-memory'
 
+// What this device comes back on after a reboot.
+export { readLedVideo, writeLedVideo } from './media-memory'
+
 // Readouts a UI presents but should not have to define.
 export { driftBand, type DriftBand } from './drift'
 export { reconnectCooldownMs, transportIsStale } from './reconnect-policy'

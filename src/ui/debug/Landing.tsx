@@ -1,25 +1,30 @@
 import { useState } from 'react'
 
-import { roomCodeFromSearch } from '../../core/join-link'
 import { readRejoinRoom } from '../../core/rejoin-memory'
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
 import { classNames } from '../class-names'
+import { roomToJoin } from '../launch-intent'
 import styles from './debug.module.css'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { KeepAwakeOption } from './KeepAwakeOption'
 import type { ViewProps } from '../view-props'
 
+type Props = ViewProps & {
+  /** Why the launch URL's video was not honoured, if it named one. */
+  launchError: string | null
+}
+
 /**
  * The entry screen: lead a room as the screen, or join an existing one as a
  * listener.
  */
-export function Landing({ state, session }: ViewProps) {
-  // Prefill from ?room=, else the room we were in before a reload/tab-discard.
-  // An explicit but blank `?room=` still wins over the remembered room.
+export function Landing({ state, session, launchError }: Props) {
+  // Read fresh on every render, not frozen at mount: a deliberate leave clears
+  // it, and this screen is exactly where that lands.
   const rejoinRoom = readRejoinRoom()
-  const [code, setCode] = useState(
-    roomCodeFromSearch(window.location.search) ?? rejoinRoom ?? '',
-  )
+  // Prefill from ?room=, else the room we were in before a reload/tab-discard
+  // — `roomToJoin` holds that precedence, including the blank-`?room=` case.
+  const [code, setCode] = useState(() => roomToJoin() ?? '')
   const connecting = state.phase === 'connecting'
 
   return (
@@ -31,6 +36,8 @@ export function Landing({ state, session }: ViewProps) {
       </p>
 
       {state.error && <p className={styles.error}>⚠ {state.error}</p>}
+
+      {launchError && <p className={styles.error}>⚠ {launchError}</p>}
 
       {rejoinRoom && !state.error && (
         <div className={styles.card}>

@@ -16,6 +16,11 @@ import { assert, close, report } from './assert.ts'
 import { summariseDiagnostics } from '../src/diagnostics/summary.ts'
 import type { DiagnosticEvent } from '../src/diagnostics/session-log.ts'
 import { joinUrl, roomCodeFromSearch } from '../src/core/join-link.ts'
+import {
+  launchIntentFromSearch,
+  roomToJoin,
+  type LaunchIntent,
+} from '../src/ui/launch-intent.ts'
 import { sessionConfig } from '../src/core/config.ts'
 import {
   isRoomCodeAcceptable,
@@ -288,6 +293,97 @@ console.log('\n[9] diagnostics summary (tags, and the wording fallback)')
   assert(
     summariseDiagnostics([]).longestStallSec === 0,
     'an empty log summarises as zeroes',
+  )
+}
+
+console.log('\n[10] launch intent (the URL, read once, in one place)')
+{
+  const bare = launchIntentFromSearch('')
+
+  assert(
+    bare.ui === 'demo' &&
+      bare.room === null &&
+      bare.video === null &&
+      !bare.autostart,
+    'a bare URL asks for nothing',
+  )
+
+  const kiosk = launchIntentFromSearch('?video=soh&autostart=1')
+
+  assert(kiosk.video === 'soh', '?video= names what the screen leads with')
+  assert(kiosk.autostart, '?autostart=1 asks the screen to start itself')
+  assert(
+    launchIntentFromSearch('?video=').video === null,
+    'a blank ?video= names nothing — unlike ?room=, there is no ' +
+      '"deliberately none" to express',
+  )
+  assert(
+    launchIntentFromSearch('?autostart').autostart &&
+      !launchIntentFromSearch('?autostart=0').autostart &&
+      !launchIntentFromSearch('?autostart=false').autostart,
+    'the flag reads the same way ?debug= does: bare on, 0 and false off',
+  )
+  assert(
+    launchIntentFromSearch('?debug=1&video=soh').ui === 'debug',
+    'a launch video and the debug UI are not exclusive',
+  )
+}
+
+console.log('\n[11] roomToJoin (screen or listener, decided in one place)')
+{
+  // The remembered room only exists in a browser, so stub the store: without
+  // it every rule below would pass on an empty one and prove nothing.
+  const stored: Record<string, string> = {
+    [sessionConfig().storage.rejoinRoom]: 'OLD9',
+  }
+
+  globalThis.sessionStorage = {
+    get length() {
+      return Object.keys(stored).length
+    },
+    clear: () => {
+      for (const key of Object.keys(stored)) {
+        delete stored[key]
+      }
+    },
+    getItem: (key: string) => stored[key] ?? null,
+    key: (index: number) => Object.keys(stored)[index] ?? null,
+    removeItem: (key: string) => {
+      delete stored[key]
+    },
+    setItem: (key: string, value: string) => {
+      stored[key] = value
+    },
+  }
+
+  const asking = (over: Partial<LaunchIntent>): LaunchIntent => ({
+    ui: 'demo',
+    room: null,
+    video: null,
+    autostart: false,
+    ...over,
+  })
+
+  assert(
+    roomToJoin(asking({})) === 'OLD9',
+    'no ?room= falls back to the room this device was last in',
+  )
+  assert(
+    roomToJoin(asking({ room: 'K7QF' })) === 'K7QF',
+    'an explicit ?room= wins over the remembered one',
+  )
+  assert(
+    roomToJoin(asking({ room: '' })) === '',
+    'a blank ?room= wins too, rather than falling back to the memory',
+  )
+  assert(
+    roomToJoin(asking({ autostart: true })) === null,
+    'a device asked to start unattended is the screen — a room it listened ' +
+      'in last week must not pull it back into listening',
+  )
+  assert(
+    roomToJoin(asking({ room: 'K7QF', autostart: true })) === 'K7QF',
+    "?room= still beats ?autostart=: no URL can unlock a listener's audio",
   )
 }
 

@@ -7,6 +7,10 @@
  * rather than session state. Nothing switches mode mid-session, which is what
  * lets `useSync` bake the mode into the screen's `<video>` element.
  *
+ * The mode is one of several things a URL can say, and it is not read from
+ * here directly: `launch-intent.ts` does that once for all of them, so a page
+ * cannot end up half-agreeing with its own link.
+ *
  * The mode has to survive the join link as well: a QR scanned off a *debug*
  * screen should land the phone in the debug follower, not the demo one. See
  * {@link withUiMode}, which the debug screen wraps its join URL in.
@@ -31,11 +35,6 @@ export function uiModeFromSearch(search: string): UiMode {
   }
 
   return 'debug'
-}
-
-/** The UI this page load is running. */
-export function currentUiMode(): UiMode {
-  return uiModeFromSearch(window.location.search)
 }
 
 /**

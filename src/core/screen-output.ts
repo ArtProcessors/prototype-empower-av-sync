@@ -25,8 +25,18 @@ import type { MediaOption } from './media-catalogue'
 /** The screen's video output: the source of every beat's position. */
 export interface ScreenVideoOutput {
   /**
-   * Point the output at `option` and start playback. Must be called inside the
-   * user gesture that grants autoplay permission.
+   * Point the output at `option` and start playback.
+   *
+   * A user gesture is the one permission no policy refuses, so the tap on a
+   * start screen is spent here. It is not the only way in: the DOM
+   * implementation's element is muted and inline, which browsers also let
+   * autoplay unprompted — that is what an unattended screen starting itself
+   * relies on (see `ui/launch-intent.ts`).
+   *
+   * Rejects when playback is refused outright, and that rejection is
+   * load-bearing: a screen whose video never started would otherwise sit
+   * there broadcasting `playing: false` over a frozen picture, which is a
+   * silent failure on a wall nobody is standing next to.
    */
   play(option: MediaOption): Promise<void>
   /**
@@ -132,10 +142,16 @@ export function createDomScreenVideo(
       // Start playback inside the gesture. The first play() can reject while
       // the freshly assigned src is still loading, so retry once — by then the
       // element has the gesture's autoplay permission either way.
+      //
+      // A second rejection is the browser refusing rather than racing — iOS
+      // Low Power Mode blocks even muted autoplay — and it is thrown, not
+      // swallowed. `becomeScreen` catches it before it opens a room, so a
+      // refusal lands back on the start screen with a tap to offer instead of
+      // going active over a picture that never moved.
       try {
         await element.play()
       } catch {
-        await element.play().catch(() => {})
+        await element.play()
       }
     },
 

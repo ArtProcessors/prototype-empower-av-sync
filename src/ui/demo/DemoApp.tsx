@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
-import { roomCodeFromSearch } from '../../core/join-link'
-import { readRejoinRoom } from '../../core/rejoin-memory'
 import type { SyncBinding } from '../../hooks/useSync'
+import { roomToJoin } from '../launch-intent'
+import { useLaunchVideo } from '../useLaunchVideo'
 import { DemoFollowerView } from './DemoFollowerView'
 import { DemoScreenStart } from './DemoScreenStart'
 import { DemoScreenView } from './DemoScreenView'
@@ -20,17 +20,20 @@ type DemoIntent = 'screen' | 'listen'
  * here to listen; opening the bare URL means it is the display. Both are
  * overridable, because a phone with no camera-scanned link still has to be
  * able to join.
+ *
+ * The display's own setup can arrive the same way. A link naming a video, and
+ * optionally asking it to start, takes this UI down to nothing an operator has
+ * to touch — see `ui/launch-intent.ts`.
  */
 export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
   // Read once, at mount, so a later re-render cannot change what this device
-  // thinks it is. An explicit `?room=` wins over the remembered room even when
-  // blank — the same precedence the debug landing uses.
-  const [invitedRoom] = useState(
-    () => roomCodeFromSearch(window.location.search) ?? readRejoinRoom(),
-  )
+  // thinks it is. `roomToJoin` holds the precedence — an explicit `?room=`
+  // beats a remembered one, and `?autostart=` beats both.
+  const [invitedRoom] = useState(() => roomToJoin())
   const [intent, setIntent] = useState<DemoIntent>(() =>
     invitedRoom !== null ? 'listen' : 'screen',
   )
+  const launch = useLaunchVideo({ state, session })
 
   // Both halves of a demo want the display lit: an unattended screen for
   // obvious reasons, and a phone because a locked one drops its audio far
@@ -67,6 +70,7 @@ export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
     <DemoScreenStart
       state={state}
       session={session}
+      launch={launch}
       onListen={() => setIntent('listen')}
     />
   )

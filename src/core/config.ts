@@ -57,6 +57,8 @@ export interface SessionStorageKeys {
   rejoinRoom: string
   /** `localStorage` key for the keep-awake preference. */
   keepAwake: string
+  /** `localStorage` key for the video this device last led with. */
+  ledVideo: string
 }
 
 /**
@@ -117,6 +119,7 @@ const defaults: SessionConfig = {
   storage: {
     rejoinRoom: 'empower.rejoinRoom',
     keepAwake: 'empower-keep-awake',
+    ledVideo: 'empower.ledVideo',
   },
   drift: {
     goodMs: 50,
