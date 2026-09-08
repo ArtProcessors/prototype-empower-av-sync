@@ -53,10 +53,12 @@
   aspect-ratio: 1;
   color: #6b7280;
 }
-/* The still ring. Inset to put its stroke *centred* on the resting radius,
-   which is where the canvas centres its own — an outer edge there would sit
-   half a stroke proud of the live one. */
-.indicator::before {
+/* The still ring, and the halo the idle tone sends out from it. Inset to put
+   the stroke *centred* on the resting radius, which is where the canvas
+   centres its own — an outer edge there would sit half a stroke proud of the
+   live one. One rule for both, so the halo starts exactly on the ring. */
+.indicator::before,
+.indicator[data-tone='idle']::after {
   content: '';
   position: absolute;
   inset: calc((1 - var(--ring-rest)) * 50% - var(--ring-width) / 2);
@@ -71,6 +73,28 @@
 .indicator::after {
   font-size: 3rem;
   line-height: 1;
+}
+/* The one tone that asks for something rather than reporting it: until a
+   listener taps, this ring is the button. A halo leaves it and fades, once
+   every few seconds, which invites the tap without the ring itself moving. */
+.indicator[data-tone='idle']::after {
+  border-color: currentColor;
+  opacity: 0;
+  animation: invite 4s ease-out infinite;
+}
+@keyframes invite {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  25% {
+    opacity: 0.3;
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
 }
 .indicator[data-tone='busy'] {
   color: var(--colour-info);
@@ -178,8 +202,9 @@
   .indicator[data-tone='busy']::before {
     animation-duration: 4s;
   }
-  /* Both go: unlike the spinner, neither says anything the ring's colour and
-     the mark are not already saying. */
+  /* The rest go: unlike the spinner, none of them says anything the ring's
+     colour and the mark are not already saying. */
+  .indicator[data-tone='idle']::after,
   .indicator[data-tone='warn']::before,
   .indicator[data-tone='error']::before {
     animation: none;

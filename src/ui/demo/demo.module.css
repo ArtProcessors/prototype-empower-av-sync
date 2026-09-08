@@ -38,24 +38,49 @@
   text-align: center;
 }
 
+/* The listener's variant, where one thing has to hold still.
+   `.centre` centres its *contents*, so anything that comes and goes — the tap
+   hint, the "still stuck?" nudge, the room-code field — moves the ring by half
+   its height. Three rows instead: the ring takes the middle one and is
+   therefore centred on the view, and each half grows into its own row. */
+.anchored {
+  grid-template-rows: 1fr auto 1fr;
+}
+.above,
+.below {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+.above {
+  align-self: end;
+}
+.below {
+  align-self: start;
+}
+
 /* -- The one button ------------------------------------------------------ */
 .action {
   width: 10rem;
   margin: 0;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 2px solid rgba(31, 240, 192, 0.5);
   border-radius: 2rem;
-  background: radial-gradient(circle at 50% 140%, rgb(0 0 0 / 0%), #1ff0c0);
+  background: transparent;
   color: #fff;
   font: inherit;
   font-size: 1.5rem;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 14px 44px rgba(42, 215, 131, 0.35);
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 .action:hover:not(:disabled) {
   border-color: #1ff0c0;
-  background: radial-gradient(circle at 50% 140%, rgb(0 0 0 / 0%), #1ff0c0);
+  border: 2px solid rgba(31, 240, 192, 0.75);
   box-shadow: 0 14px 44px rgba(31, 240, 192, 0.35);
 }
 .action:active:not(:disabled) {
@@ -69,6 +94,35 @@
 .action:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 6px;
+}
+
+/* -- The ring, as the one control ---------------------------------------- */
+/* Before a listener taps, the status ring *is* the button — see
+   `DemoFollowerView`. Nothing here but a reset and the states a control owes:
+   how the ring looks belongs to `DemoStatusDisplay`, and this must not start
+   competing with it. */
+.start {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.start:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.start:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 8px;
+  border-radius: 18px;
+}
+.start:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* -- Quiet controls ------------------------------------------------------ */
@@ -155,7 +209,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .action {
+  .action,
+  .start {
     transition: none;
   }
 }

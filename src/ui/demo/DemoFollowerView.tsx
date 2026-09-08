@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
 import type { SyncSessionState } from '../../core/session-state'
@@ -79,11 +79,13 @@ type Props = ViewProps & {
 }
 
 /**
- * The listener's screen: one button to start, then one line of status.
+ * The listener's screen: one ring to press, then one line of status.
  *
  * Starting has to happen inside a tap — that gesture is what unlocks audio on
- * iOS — so the button is the whole interface until it is pressed, and after
- * that the interface is whatever the session is currently doing.
+ * iOS — so the status ring is a button until it is pressed, and the same ring
+ * reports whatever the session is doing afterwards. It is the fixed point of
+ * the view, which is why everything else hangs above or below it rather than
+ * sharing a column with it.
  */
 export function DemoFollowerView({
   state,
@@ -92,62 +94,75 @@ export function DemoFollowerView({
   onSetUpScreen,
 }: Props) {
   const [code, setCode] = useState(invitedRoom ?? '')
+  const hintId = useId()
   const hadContact = useScreenContact(state)
   const status = followerStatus(state, hadContact)
   const stuck = useStuckFor(status.recoverable)
   const started = state.phase !== 'landing'
   const roomCode = state.transport?.roomCode ?? null
 
+  const display = (
+    <DemoStatusDisplay status={status} waveform={session.waveform} />
+  )
+
   return (
     <main className={classNames(styles.shell, styles.view)}>
-      <div className={styles.centre}>
+      <div className={classNames(styles.centre, styles.anchored)}>
+        <div className={styles.above}></div>
+
+        {/* The same panel the rest of the session is read from, made tappable
+            until it is started: "Ready" is a state, so the ring showing it is
+            the thing to press, and a failed join reports itself in the same
+            place rather than in a box above it.
+
+            Named from the headline it is already showing, because the live
+            region carrying that headline is not a role a name can be taken
+            from — left to itself the button would have no name at all. What
+            pressing it does is the hint below. */}
         {started ? (
-          <DemoStatusDisplay status={status} waveform={session.waveform} />
+          display
         ) : (
-          <>
-            {status.tone === 'error' && (
-              <p className={styles.error} role="alert">
-                {status.headline}
-                {status.detail && ` — ${status.detail}`}
-              </p>
-            )}
+          <button
+            className={styles.start}
+            disabled={!isRoomCodeAcceptable(code)}
+            aria-label={status.headline}
+            aria-describedby={hintId}
+            onClick={() => session.join(code)}
+          >
+            {display}
+          </button>
+        )}
 
-            {!invitedRoom && (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Room code</span>
-                <input
-                  value={code}
-                  // Upper-casing only, deliberately not the full
-                  // normalisation: trimming as someone types fights the
-                  // cursor. The session normalises on the way in.
-                  onChange={event => setCode(event.target.value.toUpperCase())}
-                  placeholder="e.g. K7QF"
-                  maxLength={maxRoomCodeLength()}
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                />
-              </label>
-            )}
-
-            <button
-              className={styles.action}
-              disabled={!isRoomCodeAcceptable(code)}
-              onClick={() => session.join(code)}
-            >
-              Listen
-            </button>
-
-            <p className={styles.hint}>
+        <div className={styles.below}>
+          {!started && (
+            <p className={styles.hint} id={hintId}>
               Put your headphones on, then tap to start.
             </p>
-          </>
-        )}
+          )}
 
-        {stuck && (
-          <p className={classNames(styles.hint, styles.hintUrgent)}>
-            Still stuck? Refresh to start over.
-          </p>
-        )}
+          {!started && !invitedRoom && (
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Room code</span>
+              <input
+                value={code}
+                // Upper-casing only, deliberately not the full normalisation:
+                // trimming as someone types fights the cursor. The session
+                // normalises on the way in.
+                onChange={event => setCode(event.target.value.toUpperCase())}
+                placeholder="e.g. K7QF"
+                maxLength={maxRoomCodeLength()}
+                autoCapitalize="characters"
+                autoCorrect="off"
+              />
+            </label>
+          )}
+
+          {stuck && (
+            <p className={classNames(styles.hint, styles.hintUrgent)}>
+              Still stuck? Refresh to start over.
+            </p>
+          )}
+        </div>
       </div>
 
       <footer className={styles.footer}>
