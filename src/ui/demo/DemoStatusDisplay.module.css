@@ -43,6 +43,8 @@
   --ring-box: min(52vw, 12rem);
   /* Halved because the stroke is a fraction of the half-size, not the box. */
   --ring-width: calc(var(--ring-box) * var(--ring-stroke) / 2);
+  /* The ring at rest, for every tone that does not animate it. */
+  --ring-quiet: color-mix(in srgb, currentColor 35%, transparent);
 
   position: relative;
   display: grid;
@@ -58,8 +60,7 @@
   content: '';
   position: absolute;
   inset: calc((1 - var(--ring-rest)) * 50% - var(--ring-width) / 2);
-  border: var(--ring-width) solid
-    color-mix(in srgb, currentColor 35%, transparent);
+  border: var(--ring-width) solid var(--ring-quiet);
   border-radius: 50%;
 }
 /* Gone when the live ring is mounted, which draws the same circle itself. */
@@ -99,11 +100,43 @@
 .indicator[data-tone='warn']::after {
   content: '!';
 }
+/* Breathing, where the error tone flares: something is being retried, and the
+   listener has nothing to do about it. Never reaches full strength, so the two
+   read as different things however long you look at them. */
+.indicator[data-tone='warn']::before {
+  border-color: currentColor;
+  opacity: 0.35;
+  animation: breathe 3s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.7;
+  }
+}
 .indicator[data-tone='error'] {
   color: var(--colour-bad);
 }
 .indicator[data-tone='error']::after {
   content: '✕';
+}
+/* A slow lift to the mark's own colour and back, mostly spent at rest —
+   nothing is in flight here, so it stays well short of the busy tone's spin.
+   Opacity rather than the border's colour, which will not interpolate:
+   `currentColor` inside a mix resolves a stage too late. */
+.indicator[data-tone='error']::before {
+  border-color: currentColor;
+  opacity: 0.35;
+  animation: flare 6s ease-in-out infinite;
+}
+@keyframes flare {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+  }
+  75% {
+    opacity: 1;
+  }
 }
 .ring {
   position: absolute;
@@ -144,5 +177,11 @@
   /* Still moves — it is the only thing saying "not stuck" — but slowly. */
   .indicator[data-tone='busy']::before {
     animation-duration: 4s;
+  }
+  /* Both go: unlike the spinner, neither says anything the ring's colour and
+     the mark are not already saying. */
+  .indicator[data-tone='warn']::before,
+  .indicator[data-tone='error']::before {
+    animation: none;
   }
 }
