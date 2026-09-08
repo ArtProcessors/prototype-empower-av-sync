@@ -60,11 +60,23 @@
 }
 
 /* -- The one button ------------------------------------------------------ */
+/*
+ * The screen's start control, now the same circle as the listener's status
+ * ring so the two halves of the demo read as one product — and, once pressed,
+ * used the same way: a line closes the circle, a sync mark lands where the
+ * word was, and the video takes the view. `DemoScreenStart` holds the view up
+ * for exactly that long, so the lap is never cut off part-way round.
+ */
 .action {
-  width: 10rem;
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: min(48vw, 11rem);
+  aspect-ratio: 1;
   margin: 0;
+  padding: 0;
   border: 2px solid rgba(31, 240, 192, 0.5);
-  border-radius: 2rem;
+  border-radius: 50%;
   background: transparent;
   color: #fff;
   font: inherit;
@@ -75,25 +87,114 @@
   transition:
     transform 120ms ease,
     border-color 120ms ease,
-    background 120ms ease,
     box-shadow 120ms ease;
 }
 .action:hover:not(:disabled) {
-  border-color: #1ff0c0;
-  border: 2px solid rgba(31, 240, 192, 0.75);
+  border-color: rgba(31, 240, 192, 0.75);
   box-shadow: 0 14px 44px rgba(31, 240, 192, 0.35);
 }
 .action:active:not(:disabled) {
   transform: scale(0.97);
 }
-.action:disabled {
+/* Unpressable *because it is busy* is not the same as unavailable, so the
+   sequence keeps the button at full strength while it plays. */
+.action:not([data-starting]):disabled {
   opacity: 0.4;
   cursor: not-allowed;
   box-shadow: none;
 }
+.action[data-starting] {
+  cursor: default;
+}
 .action:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 6px;
+}
+
+/* The lap, drawn *on* the button's own border rather than inside it, so what
+   it reads as is that border lighting up. Rotated so it starts at twelve
+   o'clock and runs clockwise; overflowing because half the stroke sits outside
+   the circle's own geometry. */
+.trace {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+  transform: rotate(-90deg) scale(1.02);
+}
+
+.traceLine {
+  fill: none;
+  stroke: #1ff0c0;
+  /* The border's width, in the border's units: `non-scaling-stroke` is what
+     keeps this 2 real pixels instead of 2 units of a viewBox that is stretched
+     to whatever the button measures. */
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  /* The circle carries `pathLength="100"`, so these are percentages of one lap
+     and stay right whatever size the button ends up. */
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: trace 900ms ease-in-out forwards;
+}
+
+@keyframes trace {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The mark, landing as the lap closes. This wrapper's fade is what tells the
+   view the sequence is over — see the `onAnimationEnd` in `DemoScreenStart`,
+   which has to sort it from the halves' own animations bubbling up through
+   here. */
+.mark {
+  display: grid;
+  inline-size: 34%;
+  color: #1ff0c0;
+  animation: land 500ms ease-out 900ms both;
+}
+@keyframes land {
+  from {
+    opacity: 0;
+  }
+}
+.markArt {
+  inline-size: 100%;
+  block-size: auto;
+  /* The halves start outside the viewBox and travel in, so they must not be
+     clipped at its edge on the way. */
+  overflow: visible;
+}
+
+/* Each half arrives from the side of the mark it belongs on. Percentages
+   against the viewBox rather than each half's own box, so the two travel the
+   same distance despite being different sizes. */
+.markUpper,
+.markLower {
+  transform-box: view-box;
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-delay: 900ms;
+  animation-fill-mode: both;
+}
+.markUpper {
+  animation-name: dropIn;
+}
+.markLower {
+  animation-name: riseIn;
+}
+@keyframes dropIn {
+  from {
+    transform: translateY(-55%);
+  }
+}
+@keyframes riseIn {
+  from {
+    transform: translateY(55%);
+  }
 }
 
 /* -- The ring, as the one control ---------------------------------------- */
@@ -212,5 +313,15 @@
   .action,
   .start {
     transition: none;
+  }
+  /* Shortened rather than removed: the mark's arrival is what releases the
+     view, so an `animation: none` here would strand the screen on its own
+     start button. */
+  .traceLine,
+  .mark,
+  .markUpper,
+  .markLower {
+    animation-duration: 1ms;
+    animation-delay: 1ms;
   }
 }

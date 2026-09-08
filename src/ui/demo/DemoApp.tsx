@@ -34,6 +34,10 @@ export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
     invitedRoom !== null ? 'listen' : 'screen',
   )
   const launch = useLaunchVideo({ state, session })
+  // Set only by the start button's own animation, so it defaults to "go
+  // straight there" — an `?autostart=1` display, which never renders a button
+  // to press, must not be held up waiting for a sequence that cannot play.
+  const [held, setHeld] = useState(false)
 
   // Both halves of a demo want the display lit: an unattended screen for
   // obvious reasons, and a phone because a locked one drops its audio far
@@ -41,12 +45,24 @@ export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
   // would be one more thing between a visitor and the sound.
   useEffect(() => session.setKeepAwake(true), [session])
 
-  if (state.phase === 'active' && state.transport?.role === 'screen') {
+  // The transport this device is leading on, or `null` when it is not the
+  // screen. Kept as the narrowed value rather than a boolean so both branches
+  // below can test it and one of them can pass it on.
+  const asScreen =
+    state.phase === 'active' && state.transport?.role === 'screen'
+      ? state.transport
+      : null
+
+  // Held back only by the start button's own animation, and only as far as
+  // the start screen — never into one of the other two branches, which is
+  // what a plain `&& !held` on this test would have done to a screen whose
+  // room opened before the lap closed.
+  if (asScreen && !held) {
     return (
       <DemoScreenView
         state={state}
         session={session}
-        transport={state.transport}
+        transport={asScreen}
         mountScreenVideo={mountScreenVideo}
       />
     )
@@ -55,7 +71,7 @@ export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
   // Anything active that is not the screen is a listener; anything inactive
   // follows the intent, so a failed join lands back on its own start button
   // rather than on the screen's.
-  if (state.phase === 'active' || intent === 'listen') {
+  if (!asScreen && (state.phase === 'active' || intent === 'listen')) {
     return (
       <DemoFollowerView
         state={state}
@@ -72,6 +88,7 @@ export function DemoApp({ state, session, mountScreenVideo }: SyncBinding) {
       session={session}
       launch={launch}
       onListen={() => setIntent('listen')}
+      onHold={setHeld}
     />
   )
 }
