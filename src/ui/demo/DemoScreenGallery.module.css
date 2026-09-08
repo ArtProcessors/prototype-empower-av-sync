@@ -1,0 +1,150 @@
+/*
+ * The screen gallery's switcher, and nothing else.
+ *
+ * The scenario under it is a real view at real size, so this module styles
+ * only the panel laid over it. Two rules follow from that. It is deliberately
+ * not the demo's vocabulary — monospace, square corners, the blue that means
+ * "reading, not action" — because a control that looked like product chrome
+ * would be the one thing on screen you could mistake for the thing being
+ * previewed. And it sits outside `.shell`, so it carries its own greys rather
+ * than inheriting the demo's.
+ *
+ * Top-left is the one corner both views leave empty: the QR card takes the
+ * bottom-right, the signalling alert the bottom-left, and the start screen
+ * centres everything it has.
+ */
+.switcher {
+  position: fixed;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline-start: max(12px, env(safe-area-inset-left));
+  /* Above `.screen`, which is fixed and takes no z-index of its own. */
+  z-index: 10;
+  display: grid;
+  gap: 14px;
+  inline-size: 15rem;
+  /* Never taller than the display it is laid over. */
+  max-block-size: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  border: 1px solid #2c3340;
+  border-radius: 8px;
+  background: rgb(9 12 17 / 0.92);
+  color: #c8cedb;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  box-shadow: 0 10px 34px rgb(0 0 0 / 0.55);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.title {
+  margin: 0;
+  color: var(--colour-info);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.group {
+  display: grid;
+  gap: 6px;
+}
+.groupName {
+  margin: 0;
+  color: #6b7383;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One shared button shape for the scenarios and the room presets, so the
+   selected mark below can be a single rule that applies to both. */
+.item,
+.preset,
+.hide {
+  display: block;
+  inline-size: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.item:hover,
+.preset:hover,
+.hide:hover {
+  border-color: #2c3340;
+  color: #eef1f6;
+}
+.item:focus-visible,
+.preset:focus-visible,
+.hide:focus-visible {
+  outline: 2px solid var(--colour-info);
+  outline-offset: 1px;
+}
+/* Applied alongside `.item` or `.preset`, so it has to come after both to win
+   on source order. */
+.itemOn {
+  border-color: #2f5f8f;
+  background: rgb(47 95 143 / 0.28);
+  color: #eef1f6;
+}
+
+.hide {
+  inline-size: auto;
+  padding: 2px 7px;
+  color: #6b7383;
+}
+
+.presets {
+  display: grid;
+  gap: 4px;
+}
+.preset {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.presetMs {
+  color: #6b7383;
+  font-size: 0.7rem;
+}
+
+.note {
+  margin: 0;
+  padding-block-start: 12px;
+  border-block-start: 1px solid #1e2530;
+  color: #8d95a5;
+  text-wrap: pretty;
+}
+
+.keys {
+  margin: 0;
+  color: #545c6b;
+  font-size: 0.7rem;
+}
+.keys kbd {
+  padding: 1px 5px;
+  border: 1px solid #2c3340;
+  border-radius: 3px;
+  font: inherit;
+}

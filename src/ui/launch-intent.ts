@@ -38,6 +38,13 @@ export const AUTOSTART_QUERY_PARAM = 'autostart'
  */
 export const RINGS_QUERY_PARAM = 'rings'
 
+/**
+ * Query parameter opening the screen's state gallery instead of the app, e.g.
+ * `?screens=1`. The other half of `?rings=`, and a development page in the
+ * same way — see `ui/demo/DemoScreenGallery.tsx`.
+ */
+export const SCREENS_QUERY_PARAM = 'screens'
+
 /** What the page's URL asks this device to be. */
 export interface LaunchIntent {
   /** Which UI to render. */
@@ -62,6 +69,12 @@ export interface LaunchIntent {
    * is; unlike the others, nothing downstream of it ever joins a room.
    */
   rings: boolean
+  /**
+   * Whether to open the screen's state gallery rather than a session. The
+   * same kind of page as {@link LaunchIntent.rings}, for the other half of
+   * the demo; `?rings=` wins if a URL somehow asks for both.
+   */
+  screens: boolean
 }
 
 /**
@@ -89,6 +102,7 @@ export function launchIntentFromSearch(search: string): LaunchIntent {
     video: video === null || video === '' ? null : video,
     autostart: flagFromParams(params, AUTOSTART_QUERY_PARAM),
     rings: flagFromParams(params, RINGS_QUERY_PARAM),
+    screens: flagFromParams(params, SCREENS_QUERY_PARAM),
   }
 }
 
