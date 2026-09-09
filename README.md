@@ -1,249 +1,372 @@
 # Empower — A/V Sync (feasibility spike)
 
-A **fixed screen plays a looping video** and acts as a permanent leader, continuously
-broadcasting its playback clock over WebRTC so **joining phones keep their local audio
-tightly locked to the video** ("shared screen + personal headphone audio"). The wire carries
-only tiny sync beats — never audio/video. Short content is device-local (PWA-cached); long
-content streams its audio from static hosting, window by window.
+A **fixed screen plays a looping video** and acts as a permanent leader,
+broadcasting its playback clock over WebRTC so **joining phones keep their own
+local audio locked to that video** — shared picture, personal headphones. The
+wire carries only tiny sync beats, never media.
 
-Sibling of `empower-peer-to-peer` (reuses its Trystero transport + PWA/offline patterns),
-but with a purpose-built continuous sync engine instead of the gallery's event model — and
-with peer signalling and TURN credentials served by the app's own Cloudflare Worker rather
-than by public relays.
+Measured drift is single-digit milliseconds, on iOS Safari as well as Android
+Chrome, with no per-device calibration step.
 
-**Stack:** Vite 7 · React 18 · TypeScript · `vite-plugin-pwa` (offline) · `trystero`
-(WebRTC data channels) · Cloudflare Worker + Durable Object (signalling, TURN credentials,
-static hosting) · `mp4box` + WebCodecs (windowed audio decode) · Yarn 4 · Node 24.13.0.
+> **Looking for the analysis?** What was proven, what is still open, the
+> trade-offs and the recommendations all live in
+> [FEASIBILITY.md](FEASIBILITY.md). This file is for getting the thing running
+> and knowing your way around it.
 
-## Run
+Sibling of `empower-peer-to-peer` — it reuses that project's Trystero transport
+and PWA/offline patterns, but with a continuous sync engine in place of the
+gallery's event model.
 
-**Two processes, always.** The Worker carries both halves of joining a room — peer
-signalling (`/signal`) and the TURN credentials every connection is relayed through
-(`/api/ice`) — so without it the app cannot find a peer or connect to one. Run both in
-separate terminals and open **Vite's** URL, not Wrangler's:
+**Stack:** Vite 7 · React 18 · TypeScript · `vite-plugin-pwa` · Trystero
+(WebRTC data channels) · Cloudflare Worker + Durable Object (signalling, TURN
+credentials, hosting) · `mp4box` + WebCodecs · Yarn 4 · Node 24.13.0.
+
+## The 30-second version
+
+```
+  SCREEN (leader)                              FOLLOWER (phone)
+  ┌────────────────┐   beat 4×/s (WebRTC)   ┌────────────────────┐
+  │ <video> loops  │ ─────────────────────► │ corrector @ ~15 Hz │
+  │ mediaId, time  │ ◄───── clk RPC ─────── │ nudges playbackRate│
+  └────────────────┘      (every 3 s)       │ on its own audio   │
+         ▲                                  └────────────────────┘
+         │ signalling + TURN creds                    ▲
+         └───────── Cloudflare Worker ────────────────┘
+```
+
+- The screen sends a **`beat`** ~4×/sec — `mediaId`, `videoTime`, `wall`,
+  `playing`, `duration`.
+- Each follower runs a **`clk`** RPC every 3 s to estimate the clock offset
+  between the two devices (Cristian's algorithm, lowest-RTT sample wins).
+- A **~15 Hz corrector** on the follower extrapolates where the screen is now,
+  measures loop-aware drift, and steers its local audio onto it — small drifts
+  by nudging playback rate, large ones by repositioning.
+- Every peer connection is **relayed through Cloudflare TURN** (relay-only
+  ICE); peers find each other through the app's **own signalling Durable
+  Object**. Both come from the same Worker that serves the app.
+
+## Quick start
+
+**You need two processes.** The Worker carries both halves of joining a room —
+peer signalling (`/signal`) and the TURN credentials every connection is
+relayed through (`/api/ice`) — so without it the app cannot find a peer or
+connect to one.
 
 ```bash
 nvm use && corepack enable
 yarn install
-
-yarn worker:dev   # :8787 — /signal, /api/ice, /api/ping
-yarn dev          # :3100 — open this one
 ```
 
-Vite proxies `/api` and `/signal` (the latter with `ws: true`, since signalling upgrades to a
-WebSocket) to the Worker, so both are same-origin locally just as they are in production. Put
-the TURN key in `.dev.vars` first (see `.env.example`); no Cloudflare login is needed for
-local work.
-
-| Command           | What it does                                                              |
-| ----------------- | ------------------------------------------------------------------------- |
-| `yarn dev`        | Dev server on :3100 (HMR, no service worker) — **open this one**          |
-| `yarn worker:dev` | Signalling + TURN-credential Worker on :8787, proxied from Vite           |
-| `yarn build`      | Type-check app + Worker, production build (builds the SW)                 |
-| `yarn preview`    | Prod build on :4273 (SW active — offline testing; still needs the Worker) |
-| `yarn deploy`     | Build, then deploy the Worker + SPA to Cloudflare                         |
-| `yarn sim`        | Unit checks for the sync math and session policy (`test/sync-sim.ts`)     |
-| `yarn test:check` | Type-check the sims (they sit outside the app's tsconfig)                 |
-
-To rehearse exactly what deploys — **one origin** serving the app, `/signal` and `/api/ice`,
-service worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is
-the only local mode with production's topology.
-
-## One UI, with the instruments optional
-
-There is one set of views (`src/ui/demo/`): video edge to edge with the join QR over it on a
-display, one button and one line of status on a phone. `?debug=1` does not swap them for a
-second set — it used to, and keeping two sets of views honest about the same session was work
-nobody was doing — it hangs the instruments over the top of whatever is showing.
-
-| URL         | What you get                                                                                                                                         |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`         | The app. Nothing over the picture but the QR card.                                                                                                   |
-| `/?debug=1` | The same views, plus [DebugOverlay](src/ui/debug/DebugOverlay.tsx): live drift, sync-state rows, the connection log, the wake-lock switch and Leave. |
-
-The overlay is a `position: fixed` panel in the top-left corner — the one corner neither view
-uses — and collapses to a chip, which is how it starts on a phone, where it would otherwise
-cover the ring you have to tap. Three things it cannot do from out there are settled at the
-seams that already read the launch intent: native controls on the screen's `<video>`, the
-video picker staying on the start screen when the link already named one, and the `&debug=1`
-the screen's QR carries, so a phone scanning an instrumented screen lands instrumented too.
-Nothing in `src/core` knows any of this exists.
-
-## Setting a screen up from its URL
-
-A display can be told what to be by the link it is switched on with, so an installed screen
-needs nobody standing at it. `src/ui/launch-intent.ts` is the one place the URL is read —
-once per page load, and frozen, which is why this is not a router.
-
-| Parameter      | Effect                                                                                                                                                      |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `?video=<id>`  | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker. An id this build does not have is an error on screen, with the picker back. |
-| `?autostart`   | Start without waiting for a tap. `?autostart=0` / `=false` turn it off, like `?debug=`.                                                                     |
-| `?room=<code>` | Join as a listener — what the screen's QR carries.                                                                                                          |
-
-    /?video=soh&autostart=1     a wall display, set up once
-    /?video=soh                 the same, one tap to start
-    /?debug=1&video=soh         the same video, with the instruments over it
-
-**Autostart works because the screen is muted.** The leader's `<video>` is muted and inline,
-which browsers allow to autoplay unprompted; followers are untouched by this, since their
-audio still needs a real gesture. When a browser refuses anyway — iOS **Low Power Mode**
-blocks even muted autoplay — `play()` rejects, no room is opened, and the start screen comes
-back with the browser's reason and a tap to offer. That rejection is deliberately not
-swallowed: a screen that went active over a video that never started would broadcast
-`playing: false` to every follower and look, from across a room, like a poster.
-
-**Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins, even blank — a
-listener's audio is not something a URL can unlock, so `?room=` beats `?autostart=`. Failing
-that, `?autostart=` beats the room this device happens to remember, since a device asked to
-come up unattended was set up to be the screen.
-
-With no `?video=` at all, a screen leads with **whatever it last led with** — remembered in
-`localStorage` when a session actually starts, so a display that lost power comes back on the
-same content with no URL involved. A launch link overrides it; a memory naming a video this
-build no longer ships falls back to the catalogue default.
-
-## Try it — demo
-
-1. On the display device, open the app, **pick a video**, and tap **Start** (or open
-   `/?video=<id>&autostart=1` and it does both itself). The video goes full-bleed and a QR
-   card sits in the bottom-right corner. Nothing else is on the picture — whoever set the
-   display up has its URL and a reload, and `?debug=1` is where anything more lives.
-2. On phones, scan the QR and tap **Listen** (the tap unlocks audio on iOS). Put on
-   headphones. The ring reports what the session is doing — downloading the soundtrack,
-   reconnecting, in sync — and **Refresh** is always in the footer, promoted after 20 seconds
-   of unresolved trouble.
-
-The test clip has a **per-second flash + click** and a sweeping bar, so drift is instantly
-visible and audible: the click in your headphones should land on the flash on screen.
-
-## Try it — debug
-
-Add `?debug=1` to either half and everything above happens the same way, with the instruments
-on top of it.
-
-1. On the display, `/?debug=1`. The picker stays even when the link named a video, the
-   screen's `<video>` gets native controls to scrub and pause with, and the panel's
-   **join url** row is the QR's link in text, for a display no camera is pointed at.
-2. On phones, scan that QR — it carries `&debug=1` — and tap the ring. Open the **Debug**
-   chip: above the rows is the live **drift meter**, held back until the screen is actually
-   being heard from, since a drift of 0 reads the same whether it is right or absent.
-
-The panel's `engine` row shows which output path is live (`element`, `buffer`, `stream`, or
-`syncing` while a long soundtrack's first window loads). **Keep screen awake** is a switch
-there and nowhere else — the app turns the wake lock on for everyone and never offers it
-back, which is right for a visitor and useless for testing what a sleeping phone does.
-
-## Deploy
-
-One Cloudflare Worker serves the built SPA, `/api/ice` and the `/signal` WebSocket, so both
-the TURN-credential fetch and peer signalling are same-origin in production and there is no
-CORS surface. `yarn deploy` runs `yarn build` first, so the `dist/` it uploads is always
-current, and the `SignalRelay` Durable Object migration in `wrangler.toml` applies on the
-first deploy.
-
-**Authenticating.** `wrangler login` works but grants a broad OAuth scope set
-(`workers:write`, `workers_kv:write`, `d1:write`, `pages:write`, `zone:read`, …). Prefer a
-scoped API token — create one from the dashboard's **"Edit Cloudflare Workers"** template
-and export it for the deploy:
+Put your Cloudflare TURN key in `.dev.vars` first (see [.env.example](.env.example)
+for the two values). No Cloudflare login is needed for local work.
 
 ```bash
-export CLOUDFLARE_API_TOKEN=...      # add CLOUDFLARE_ACCOUNT_ID if the token sees several
-yarn deploy
+yarn worker:dev   # :8787 — /signal, /api/ice, /api/ping
+yarn dev          # :3100 — open THIS one
 ```
 
-The same variable works for `wrangler secret put`, so the whole flow needs no browser login.
+Vite proxies `/api` and `/signal` (the latter with `ws: true`, since signalling
+upgrades to a WebSocket) to the Worker, so both are same-origin locally exactly
+as they are in production.
 
-The token belongs to you, not to the repo, so keep it out of the project. For a one-off,
-`read -rs CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN` avoids leaving it in shell
-history; for repeat deploys, the macOS Keychain
-(`security add-generic-password -a "$USER" -s cloudflare-api-token -w`, read back with
-`security find-generic-password … -w`) keeps it encrypted at rest. A file outside the repo
-also works via `yarn wrangler deploy --env-file ~/.cloudflare.env`.
+### Scripts
 
-Do **not** put it in `.env` (Wrangler reads it, but so does Vite — see `.env.example`), and
-do **not** put it in `.dev.vars`: that file populates the _Worker's_ `env` bindings, so an
-account-level token there would be handed to Worker code at runtime rather than
-authenticating the CLI.
+| Command           | What it does                                                      |
+| ----------------- | ----------------------------------------------------------------- |
+| `yarn dev`        | Dev server on :3100 (HMR, no service worker) — **open this one**  |
+| `yarn worker:dev` | Signalling + TURN Worker on :8787, proxied from Vite              |
+| `yarn build`      | Type-checks app + Worker + sims, then production build (incl. SW) |
+| `yarn preview`    | Prod build on :4273 (SW active — offline testing)                 |
+| `yarn sim`        | Unit checks: sync math and session policy                         |
+| `yarn format`     | Prettier over the repo (`format:check` to verify)                 |
+| `yarn deploy`     | Build, then deploy Worker + SPA to Cloudflare                     |
 
-**First deploy, in order.** The `workers.dev` subdomain is not knowable until the Worker
-exists, so locking the endpoint down takes two passes:
+### Which local mode to use
 
-1. `yarn deploy` — creates the Worker and prints
-   `https://empower-av-sync.<subdomain>.workers.dev`. The app loads, but `/api/ice` returns
-   500 and the diagnostics panel reports `turn preflight FAILED — no credentials`. Expected.
-2. `yarn wrangler secret put TURN_KEY_ID`, then the same for `TURN_KEY_API_TOKEN`. These
-   apply immediately — no redeploy needed. Reload and the panel should report
-   `turn preflight OK — relay via …` (which transports appear depends on the network).
-3. Set `ALLOWED_ORIGINS` in `wrangler.toml` to the URL from step 1, then `yarn deploy` again.
+| Mode                                               | Use it for                                                             |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `yarn dev` + `yarn worker:dev`, open **:3100**     | Everyday work. HMR, no service worker in the way.                      |
+| `yarn preview` + `yarn worker:dev`, open **:4273** | Offline / service-worker behaviour.                                    |
+| `yarn build` + `yarn worker:dev`, open **:8787**   | Production topology: one origin serving app, `/signal` and `/api/ice`. |
 
-`ALLOWED_ORIGINS` deters casual cross-site use of the credential endpoint; it is **not**
-authentication, since `Origin` is trivially forged outside a browser. Anyone who finds an
-open endpoint can mint credentials that relay traffic billed to the account, so put a
-Cloudflare rate-limiting rule in front of `/api/ice` before this is public. Same-origin
-requests from the SPA send no `Origin` header, so the check never interferes with normal use.
+## Try it
 
-**Watching it.** Worker Logs are enabled in `wrangler.toml`, so a deployed session can be
-diagnosed from the dashboard or streamed while testing from a phone:
+1. **On the display**, open the app, pick a video and tap **Start** — or open
+   `/?video=test&autostart=1`, which does both. The video goes full-bleed and a
+   QR card sits in the bottom-right.
+2. **On a phone**, scan the QR and tap **Listen** (the tap is what unlocks audio
+   on iOS). Put on headphones. The ring reports what the session is doing —
+   downloading, reconnecting, in sync.
+
+The `test` clip has a **per-second flash + click** and a sweeping bar, so drift
+is instantly visible and audible: the click in your headphones should land on
+the flash on screen.
+
+Add `?debug=1` to either half for the instruments (see
+[Debugging](#debugging--diagnostics)). A QR scanned off an instrumented screen
+carries `&debug=1`, so the phone lands instrumented too.
+
+## Features
+
+**Fixed-leader sync protocol** ([sync-controller.ts](src/transport/sync-controller.ts))
+— star topology, roles never migrate. Followers join Trystero `passive`, so
+they dial only the screen and never each other. The pure offset/target/drift
+math is isolated and unit-tested in [sync-math.ts](src/sync/sync-math.ts).
+
+**Three audio engines**, chosen per source and per platform
+([audio-sync-controller.ts](src/media/audio-sync-controller.ts)). `engineFor()`
+resolves: streaming source → stream engine (if `AudioDecoder` exists), else iOS
+→ buffer, else element. The element path is also the universal fallback.
+
+| Engine    | Where it runs                            | How it corrects                                                                                            | Cost / constraints                                                          |
+| --------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `element` | Android/desktop, short content           | `<audio>` via Web Audio; ±70 ms deadband, rate 0.97–1.03 (pitch preserved), hard seek > 0.6 s              | Cheapest; also the fallback if another engine fails                         |
+| `buffer`  | iOS (any length, pre-Safari 26)          | Whole file decoded to an `AudioBuffer`, played on the AudioContext clock; source-node swap to reposition   | ~21–23 MB PCM per minute of audio                                           |
+| `stream`  | Long content where `AudioDecoder` exists | 60 s window range-fetched + WebCodecs-decoded, sliding in 45 s steps (15 s overlap, prefetched 30 s early) | Flat memory in track length; needs AAC-LC, faststart MP4, HTTP Range + CORS |
+
+> `AudioDecoder` is **not** "iOS 16.4+". Safari 16.4 shipped WebCodecs' _video_
+> interfaces only; audio arrived in **Safari 26.0**. On most iPhones in use the
+> buffer engine is the only engine there is, whatever the length.
+
+**Automatic output-latency compensation** — what you _hear_ trails the audio
+clock by the device's output latency (~100–300 ms on iOS, more over Bluetooth).
+It is measured live from `AudioContext.getOutputTimestamp()`, smoothed, and the
+audio is steered _ahead_ by that amount. This is what makes BYOD headphones work
+without a calibration step.
+
+**Playback survives screen lock** ([streaming-buffer-engine.ts](src/media/streaming-buffer-engine.ts))
+— on `visibilitychange` the engine pre-schedules a chain of buffer sources
+directly on the audio thread (~180 s runway, topped up from each `onended`), so
+audio free-runs without a timer. It runs at the _measured_ screen:device clock
+ratio rather than a blind 1.0. On wake the chain keeps playing until a synced
+source can take over at a de-clicked instant.
+
+**The page stays alive on Android** — the output stage is permanently split into
+a direct leg (`ctx.destination`) and a sink leg (`MediaStreamAudioDestinationNode`
+→ `<audio>`, registered as the MediaSession). The sink leg is _never_ silent: it
+idles at `KEEPALIVE_GAIN` (0.005, ~46 dB down) because Chrome won't freeze a page
+that is playing audio, and a frozen page takes the WebRTC connection with it.
+Backgrounding cross-fades between legs over 6 ms rather than re-wiring nodes.
+
+**Auto-reconnect** ([transport-watchdog.ts](src/core/transport-watchdog.ts),
+policy in [reconnect-policy.ts](src/core/reconnect-policy.ts)) — if beats have
+been absent > 6 s the follower rejoins the room without touching the audio
+engine, so the free-run chain keeps sounding across it. While hidden, a rejoin is
+gated on the `/api/ping` reachability probe. Signalling also reconnects
+underneath Trystero and re-announces ([worker-strategy.ts](src/transport/worker-strategy.ts)).
+
+**Zero-touch screens** — a display can be told what to be entirely by the link it
+is switched on with (`/?video=soh&autostart=1`), so an installed screen needs
+nobody standing at it. With no `?video=`, it comes back on whatever it last led
+with. See [URL parameters](#url-parameters).
+
+**PWA / offline** — the app shell and the `test` clip are precached, so they work
+fully offline after one load. Long-form content is **not** offline: its audio is
+range-fetched throughout playback.
+
+**Headless core** — `src/core` composes the whole session with no React and no
+JSX; `src/ui` is one host on top of it. See [Reusing the core](#reusing-the-core).
+
+## URL parameters
+
+Everything the URL can say is read once per page load, and frozen, in
+[launch-intent.ts](src/ui/launch-intent.ts) — deliberately not a router. Flags
+follow the `?debug=` reading: present and not `0`/`false` means on.
+
+| Parameter        | Effect                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `?debug=1`       | Raise the debug overlay over the normal views                                                                   |
+| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker                                  |
+| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                                    |
+| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                               |
+| `?rings=1`       | **Dev page:** gallery of every follower ring state ([DemoStatusGallery.tsx](src/ui/demo/DemoStatusGallery.tsx)) |
+| `?screens=1`     | **Dev page:** gallery of every screen state ([DemoScreenGallery.tsx](src/ui/demo/DemoScreenGallery.tsx))        |
+| `?runway=<sec>`  | Background free-run runway (default 180)                                                                        |
+| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                                            |
+| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                                            |
+
+**Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins even when
+blank (a listener's audio is not something a URL can unlock), then `?autostart=`
+beats the room this device happens to remember — a device set up to come up
+unattended was set up to be the screen.
+
+```
+/?video=soh&autostart=1     a wall display, set up once
+/?video=soh                 the same, one tap to start
+/?debug=1&video=soh         the same video, with the instruments over it
+```
+
+## Debugging & diagnostics
+
+There is **one set of views** (`src/ui/demo/`). `?debug=1` does not swap them for
+a second set — it hangs [DebugOverlay](src/ui/debug/DebugOverlay.tsx) over the top
+of whatever is showing, as a fixed panel in the top-left that collapses to a chip
+(which is how it starts on a phone). Three things it can't do from out there are
+settled where the launch intent is already read: native `<video>` controls on the
+screen, the picker staying put when the link named a video, and the `&debug=1`
+the QR carries. Nothing in `src/core` knows the overlay exists.
+
+**Sync-state rows** — `phase`, `role`, `room`, `peers`, `signalling`, `media`,
+`clock offset`, `rtt`, `drift`, `mode`, `playbackRate`, `engine`, `audio out`,
+`latency comp`, `local / target`, plus a live **drift meter** (held back until the
+screen is actually being heard from — a drift of 0 reads the same whether it is
+right or absent). The **join url** row is the QR's link in text, for a display no
+camera is pointed at. **Keep screen awake** is a switch here and nowhere else.
+
+**Connection log** ([DiagnosticsPanel.tsx](src/ui/debug/DiagnosticsPanel.tsx)) —
+the instrument the connection-stability work was done with. A summary line
+(freezes · peer leaves · rejoins · longest timer stall), one-tap **Copy log**, and
+the buffer is mirrored to `sessionStorage` so a log survives the browser
+discarding the tab. Events are tagged `audio`, `beat`, `ice`, `net`, `page`,
+`peer`, `timer` or `transport`.
+
+Lines worth recognising:
+
+| Line                                      | Means                                                                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `turn preflight OK — relay via …`         | Credentials minted and a relay candidate allocated, checked before anyone joins ([turn-preflight.ts](src/diagnostics/turn-preflight.ts)) |
+| `ab12cd path relay→relay over tls (wifi)` | The selected candidate pair. Transport comes from `relayProtocol`, not `protocol`                                                        |
+| `… — NOT RELAYED`                         | ICE pinning has been defeated; the session is no longer testing the service                                                              |
+| `probe OK (142ms) — network usable`       | The `/api/ping` probe that gates hidden rejoins ([reachability.ts](src/diagnostics/reachability.ts))                                     |
+| `relays (rejoin): none connected`         | Signalling socket health — separates a dead relay from an empty room ([relay-sockets.ts](src/diagnostics/relay-sockets.ts))              |
+| `signalling relay dropped — reconnecting` | Relay socket died; recovery logs `N topics restored` with the announce replayed                                                          |
+| `FROZEN by the browser` / `gap 41.2s`     | Chrome froze the page, or the 1 Hz liveness timer stalled — Android power-save killing it                                                |
+
+**Deployed sessions:** Worker Logs are on in `wrangler.toml`, so stream them while
+testing from a phone:
 
 ```bash
 yarn wrangler tail
 ```
 
+## Verification
+
+**Automated** — `yarn sim` runs two suites: the sync math (offset/RTT, target
+extrapolation incl. loop wrap, signed seam drift, correction-rate clamping) and
+session policy (rejoin backoff, staleness, room codes, join-link round-trip,
+keep-awake state machine, diagnostics summary). `yarn build` type-checks app,
+Worker and sims as one gate.
+
+The streaming engine's own machinery — window bookkeeping, chain scheduling,
+clock-ratio regression — and the follower's correction state machine have **no
+automated coverage**. They are device-verified only.
+
+### Regression checklist
+
+Everything that made this app hard is device behaviour, so run this after any
+change to the session, the transport or the audio path. **Capture a baseline
+sleep log first**, so step 3 has something to compare against.
+
+1. **iOS, join:** tap the ring → audible within a few seconds; rows show
+   `engine: buffer` or `stream` and `audio out: web-audio`. Flick the ringer
+   switch off — still audible.
+2. **iOS, lock:** lock mid-session → audio continues; unlock → no audible jump.
+3. **Android, sleep:** 10 minutes screen-off, then copy the connection log.
+   Compare freezes / peer leaves / rejoins / longest stall against the baseline.
+4. **Rejoin:** reload a follower → comes back on the Ready ring for its room, one
+   tap rejoins. Scan the QR from a second device → joins that room.
+5. **Two clients, 5 min foreground:** `mode: locked`, single-digit-ms drift,
+   `rate ≈ 1`, still tracking across a loop wrap; listener count is right.
+6. **Leave:** stop from both roles → listener lands on its Ready ring, screen on
+   Start. Reload after a deliberate leave: the room is **not** offered again.
+7. **Offline:** `yarn build && yarn preview`, load once, go offline, reload — app
+   and `test` clip play from cache.
+
+## Content & adding your own
+
+The leader picks the video; the choice rides every beat as `mediaId` so followers
+load the matching audio. Four options ship ([src/content/index.ts](src/content/index.ts)):
+
+| id         | Video (screen)                         | Audio (followers)               | Delivery                                 |
+| ---------- | -------------------------------------- | ------------------------------- | ---------------------------------------- |
+| `test`     | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline) |
+| `agent327` | `agent-327.mp4` (~38 MB, 3m52s)        | `agent-327.m4a` (~3.6 MB)       | remote, `streaming: true`                |
+| `soh`      | `soh.mp4` (~127 MB)                    | `soh.m4a` (~14 MB)              | remote, `streaming: true`                |
+| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, `streaming: true`                |
+
+**Followers only ever download the audio** — ~14 MB against the screen's 127 MB
+for `soh`. With `streaming: true` a follower doesn't even fetch the whole
+soundtrack: it pulls ~60 s of compressed audio at a time, roughly 1.3× the audio
+bitrate sustained (~20 KB/s at ~128 kbps), for as long as it is listening.
+
+A `videoUrl`/`soundtrackUrl` can be a bundled import (precached), a
+`public/media/` path (runtime-cached), or an absolute URL on static hosting.
+Absolute URLs used by a `streaming` entry **must** serve `Accept-Ranges: bytes`
+and permissive CORS, and the MP4's `moov` must be in the first 24 MB.
+
+To add your own, produce a browser-friendly **H.264 + AAC-LC** MP4 and its
+extracted audio, then add an entry to `VIDEOS`:
+
+```bash
+# audio the followers play — stream-copy the AAC so the timeline is identical
+ffmpeg -i source.mov -vn -c:a copy -movflags +faststart mine.m4a
+
+# video the screen plays — transcode if the source is HEVC (Chrome can't decode
+# it) or AV1 (Safari needs M3/A17-class hardware)
+ffmpeg -i source.mov -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p \
+  -c:a copy -movflags +faststart mine.mp4
+
+# already H.264/AAC? remux instead
+ffmpeg -i source.mp4 -c copy -movflags +faststart mine.mp4
+```
+
+Keep the audio a stream-copy of the video's own track — that is what makes the
+two timelines bit-identical, with no encoder-delay offset to compensate for.
+
+## Deploy
+
+One Worker serves the built SPA, `/api/ice` and the `/signal` WebSocket, so
+everything is same-origin in production and there is no CORS surface. `yarn
+deploy` runs `yarn build` first, and the `SignalRelay` Durable Object migration
+in `wrangler.toml` applies on the first deploy.
+
+**Authenticating.** `wrangler login` works but grants a broad OAuth scope set.
+Prefer a scoped API token from the dashboard's **"Edit Cloudflare Workers"**
+template:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...   # add CLOUDFLARE_ACCOUNT_ID if it sees several
+yarn deploy
+```
+
+The token belongs to you, not the repo. Keep it out of `.env` (Vite reads that)
+and out of `.dev.vars` (that populates the _Worker's_ runtime env, so a
+account-level token there is handed to Worker code rather than to the CLI). For
+repeat deploys, the macOS Keychain or `--env-file ~/.cloudflare.env` both work.
+
+**First deploy, in order.** The `workers.dev` subdomain isn't knowable until the
+Worker exists, so locking it down takes two passes:
+
+1. `yarn deploy` — creates the Worker and prints its URL. The app loads, but
+   `/api/ice` returns 500 and diagnostics report `turn preflight FAILED`.
+   Expected.
+2. `yarn wrangler secret put TURN_KEY_ID`, then `TURN_KEY_API_TOKEN`. These apply
+   immediately — no redeploy. Reload; the panel should report
+   `turn preflight OK — relay via …`.
+3. Set `ALLOWED_ORIGINS` in `wrangler.toml` to that URL, then `yarn deploy` again.
+
+`ALLOWED_ORIGINS` deters casual cross-site use; it is **not** authentication,
+since `Origin` is trivially forged outside a browser. Anyone who finds an open
+`/api/ice` can mint credentials that relay traffic billed to the account, so put
+a Cloudflare rate-limiting rule in front of it before this is public.
+
 **Assets.** Workers cap a single asset at 25 MiB. `public/.assetsignore` excludes
-`public/media/`, which holds the large local-only screen videos; deployed builds serve the
-real content from remote hosting instead (see [Videos](#videos--adding-your-own)).
+`public/media/` (large local-only screen videos); deployed builds serve the real
+content from remote hosting.
 
-## How the sync works
+## Where things live
 
-- **`beat`** (screen → all, ~4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
-  which video is selected, where it is, and the screen's wall-clock at that instant.
-- **`clk`** (follower → screen RPC): estimates the **clock offset** between devices via
-  Cristian's algorithm (`offset = tScreen − (t0+t2)/2`), keeping the lowest-RTT sample.
-- **Corrector** (~15 Hz on each follower): computes the screen's current position
-  `target = videoTime + (now + offset − wall)`, wrapped to the loop, and measures loop-aware
-  `signedDrift(local, target)`. It then steers **one of three output engines** onto that
-  target — chosen per source (`streaming` flag) and per platform:
-  - **Element (Android/desktop, short content):** an `<audio>` element routed through Web
-    Audio — small drifts close by **nudging `playbackRate`** (pitch preserved, 0.97–1.03),
-    large drifts hard-seek. Also the fallback if either engine below fails to load, and how
-    long content plays off iOS when WebCodecs audio is missing.
-  - **Buffer (iOS):** Safari's media-element pipeline stalls >1 s on every seek and ignores
-    fine `playbackRate` writes, so element-side correction is unworkable there. The follower
-    decodes the **whole** soundtrack and plays the `AudioBuffer` on the AudioContext clock —
-    repositioning is a sample-accurate source-node swap (no stall) and rate nudges are subtler
-    (0.98–1.02). Costs **~21 MB of PCM per minute**, so it is only viable for short content.
-  - **Stream (long content, where WebCodecs audio exists):** parses only the `moov` (via
-    `mp4box`), keeps a sample table of byte offsets/timing, then range-fetches and
-    **WebCodecs-decodes a 60 s window** around the playhead, sliding it in 45 s steps
-    (prefetched 30 s early, swapped seamlessly inside the 15 s overlap). Memory stays flat in
-    track length, where the buffer engine's ~21 MB/min would need ~950 MB for a 45-minute
-    track. A track that fits in one window has that window **looped on the audio thread**.
-    Needs AAC-LC, a faststart MP4, HTTP Range + CORS, and `AudioDecoder` — see below.
-
-  **`AudioDecoder` is not "iOS 16.4+".** Safari 16.4 shipped WebCodecs' _video_ interfaces
-  only; `AudioDecoder` was `undefined` on every version through 18.7 and arrived in **Safari
-  26.0**. So on the overwhelming majority of iPhones in use the streaming engine cannot be
-  built at all, and the buffer engine is not an optimisation for short clips — it is the only
-  engine that runs, whatever the `streaming` flag says and whatever the length. Measured on an
-  iPhone running iOS 18.7: the 45-minute asset decodes whole to **~900 MB and plays**, so the
-  "untenable on a phone" arithmetic below is not a ceiling anyone has actually hit.
-
-### Where things live
-
-The app is split into a **headless core** and a **React host**, so the sync logic can carry a
-different UI in another project without being rewritten.
-
-| Layer                   | What's in it                                                                                                                                                                                                                            |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/`             | The session: `createSyncSession()` composes the transport, the corrector, the watchdog, the wake lock and the screen's video output, and exposes one snapshot store. No React, no JSX. `src/core/index.ts` is the whole public surface. |
-| `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math.                                                                                                                                                                                        |
-| `src/transport/`        | Trystero rooms, beats, the clock RPC, ICE config and the Worker signalling strategy.                                                                                                                                                    |
-| `src/media/`            | The follower's corrector and its three output paths (`audio-sync-controller.ts`, `buffer-audio-engine.ts`, `streaming-buffer-engine.ts`).                                                                                               |
-| `src/diagnostics/`      | The session log and the monitors that feed it.                                                                                                                                                                                          |
-| `src/content/`          | _This app's_ media — the catalogue is handed to the core, not imported by it.                                                                                                                                                           |
-| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the session's snapshot; `ui/demo/` is the views, and `ui/debug/` is the overlay `?debug=1` puts over them (`ui/ui-mode.ts`).                                                                  |
-| `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig.                                                                                                                                                          |
+| Layer                   | What's in it                                                                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`             | The session: `createSyncSession()` composes transport, corrector, watchdog, wake lock and screen video into one snapshot store. No React. `core/index.ts` is the whole public surface. |
+| `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math                                                                                                                                        |
+| `src/transport/`        | Trystero rooms, beats, clock RPC, ICE config, Worker signalling strategy                                                                                                               |
+| `src/media/`            | The follower's corrector and its three output engines                                                                                                                                  |
+| `src/diagnostics/`      | The session log and the monitors that feed it                                                                                                                                          |
+| `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it                                                                                                         |
+| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the snapshot; `ui/demo/` is the views, `ui/debug/` the overlay                                                                               |
+| `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig                                                                                                          |
+| `worker/`               | Worker entry (`/api/ice`, `/api/ping`, SPA) and the `SignalRelay` Durable Object                                                                                                       |
 
 ### Reusing the core
 
@@ -258,250 +381,45 @@ session.subscribe(() => render(session.getState()))
 await session.join('K7QF') // inside a user gesture
 ```
 
-`createSyncSession` needs a `MediaCatalogue` and nothing else; the browser defaults cover the
-rest. The screen's video is a port — pass your own `ScreenVideoOutput` to play through
-something that is not a DOM element. A React host instead configures the built-in one through
-`useSync({ screenVideo: { configure } })`, which hands over the `<video>` once, before any
-gesture; `loop`, `muted` and `playsInline` are load-bearing and everything else is the
-host's.
+`createSyncSession` needs a `MediaCatalogue` and nothing else; browser defaults
+cover the rest.
 
-Followers expose their audio too: `session.waveform` is a pull-based read of the samples
-actually leaving the device (`AudioWaveform`), for a host that wants to draw them. It is
-deliberately not part of the snapshot — a host reads it from inside its own animation loop, so
-redrawing at display rate never re-renders anything. The demo listener's ring is built on it. Timings, room-code rules, storage keys and drift bands are `configureSession()`; the
-Trystero app id and the Worker routes are `configureTransport()` in `src/transport/`. Both
-default to what this app uses, and nothing here calls either.
+- The screen's video is a **port** — pass your own `ScreenVideoOutput` to play
+  through something that isn't a DOM element. A React host configures the
+  built-in one via `useSync({ screenVideo: { configure } })`, which hands over the
+  `<video>` once, before any gesture. `loop`, `muted` and `playsInline` are
+  load-bearing; everything else is the host's.
+- `session.waveform` is a pull-based read of the samples actually leaving the
+  device, for a host that wants to draw them. Deliberately _not_ part of the
+  snapshot, so redrawing at display rate never re-renders anything. The listener's
+  ring is built on it.
+- Timings, room-code rules, storage keys and drift bands are `configureSession()`;
+  the Trystero app id and Worker routes are `configureTransport()`. Both default
+  to what this app uses, and nothing here calls either.
 
-## Diagnostics
+## Gotchas worth knowing up front
 
-Under `?debug=1`, both roles get a **connection log** section in the debug overlay
-([DiagnosticsPanel.tsx](src/ui/debug/DiagnosticsPanel.tsx)) — the instrument the connection-stability
-work was done with. It carries a summary line (freezes · peer leaves · rejoins · longest timer
-stall) and a one-tap **Copy log**, and the buffer is mirrored to `sessionStorage` so a log
-survives the browser discarding the tab. Events are tagged `audio`, `beat`, `ice`, `net`,
-`page`, `peer`, `timer` or `transport`.
+- **The Worker is not optional locally.** No Worker means no peer discovery and
+  no TURN credentials, and joining fails outright — at discovery or at
+  connection.
+- **iOS silences bare `<audio>`** with the physical mute switch (playback still
+  advances, so drift moves but you hear nothing). All follower audio therefore
+  routes through Web Audio, resumed inside the join tap.
+- **Screen-off kills the radio, not the page.** Android powers Wi-Fi down at
+  screen-off: audio free-runs and the page stays alive, but the connection dies
+  within ~10 s and only returns when the screen does. The **Keep screen awake**
+  option is the only lever a web page has. Long-form content, which range-fetches
+  a window every 45 s, goes silent in that state.
+- **The keep-alive tap is load-bearing and undocumented.** Chrome not freezing an
+  audio-playing page is a heuristic, not a spec. If it tightens, the symptom is a
+  silent death minutes into a sleep.
+- **Loop wrap on multi-window sources** briefly shows `syncing` while a fresh
+  window fetches. Tracks that fit one window loop on the audio thread with no
+  seam (measured 1–7 ms across a wrap).
+- **Room codes are the only access control.** The 4-character code is also the
+  room password.
+- **Rate nudges aren't pitch-preserved on the buffer/stream engines** —
+  `AudioBufferSourceNode.playbackRate` shifts pitch, hence the tight ±2 % clamp.
 
-The lines worth knowing:
-
-- **`turn preflight OK — relay via …`** — credentials minted and a relay candidate actually
-  allocated, checked at startup before anyone joins
-  ([turn-preflight.ts](src/diagnostics/turn-preflight.ts)).
-- **`ab12cd path relay→relay over tls (wifi)`** — the _selected_ candidate pair once a peer
-  connects. The transport comes from Chromium's `relayProtocol`, not `protocol`: the latter
-  always reads `udp` on a relay candidate, describing the relay's far leg rather than the link
-  this phone is holding. A pair that is not `relay→relay` is logged **`— NOT RELAYED`**, which
-  means the ICE pinning has been defeated and the session is no longer testing the service.
-- **`probe OK (142ms) — network usable`** — the `/api/ping` reachability probe that gates
-  rejoin attempts while the page is hidden ([reachability.ts](src/diagnostics/reachability.ts)).
-  Without that gate a five-minute sleep burned seven room rebuilds against a radio that was off.
-- **`relays (rejoin): none connected`** — signalling socket health, which is what separates a
-  throttled or dead relay from a room that is simply empty
-  ([relay-sockets.ts](src/diagnostics/relay-sockets.ts)).
-- **`signalling relay dropped — reconnecting`** / **`signalling relay reconnected — 2 topics
-restored`** — the relay socket died and came back, with the room's subscriptions and
-  announce replayed onto the new socket. The screen also shows a banner while this is
-  outstanding, since its listener count no longer reflects whether anyone can still join.
-- **`FROZEN by the browser`** and **`gap 41.2s`** — Chrome froze the page, or the 1 Hz liveness
-  timer stalled. The two symptoms of Android power-save killing a session.
-
-The sync-state rows above it in the same overlay show the live `engine`, `audio out` and
-`latency comp`.
-
-## Verification
-
-- **`yarn sim`** — offset/target/drift/rate math incl. the loop seam. All pass. (The streaming
-  engine's window/chain/clock-ratio machinery has no automated coverage — it only shares the
-  pure helpers the sim exercises.)
-- **Live (two clients in-browser):** follower locks to the screen's video at **single-digit-ms
-  drift**, `mode: locked`, `playbackRate ≈ 1`, tracking correctly across a loop wrap; the
-  screen shows the listener count.
-- **Offline:** `yarn build && yarn preview`, load once, go offline, reload — the app and the
-  **`test` clip** play from cache (precache includes `screen.mp4` + `soundtrack.m4a`). The
-  long options are **not** offline: their audio is range-fetched throughout playback.
-- **Two-device (manual):** laptop = screen, phone (headphones) = follower — clicks line up
-  with flashes; drift stays small on WiFi and cellular. Peers meet over the Worker's `/signal`
-  relay and every connection is relayed through Cloudflare TURN, so the Worker must be running
-  (`yarn worker:dev`) or joining fails outright — at discovery or at connection, respectively.
-- **Sleep/lock (manual, iterative):** lock the phone mid-session — audio keeps playing and the
-  page stays alive (keep-alive tap), but the **network does not**: Android powers its Wi-Fi down
-  at screen-off, so the link dies within ~10 s and only returns when the screen does. Hold the
-  "Keep screen awake" option to keep a session connected. On wake the follower hands back to a
-  synced source. Worth watching the screen's listener count as well as the phone: a follower that
-  has silently lost its connection still plays. Verified by
-  device testing rather than measurement; see [FEASIBILITY.md](FEASIBILITY.md) for what's open.
-
-### Regression checklist
-
-The automated checks cover the pure math and the type surface; everything that made this app
-hard is device behaviour. Run this list after any change to the session, the transport or the
-audio path — and **capture a baseline sleep log first**, so step 3 has something to compare
-against. `yarn build` runs the app, Worker and sim type-checks; `yarn sim` runs the unit
-checks; `yarn format:check` runs Prettier.
-
-1. **iOS, join:** tap the ring → audible within a few seconds, and the debug overlay's rows
-   show `engine: buffer` or `stream` and `audio out: web-audio`. Flick the ringer switch off —
-   still audible.
-2. **iOS, lock:** lock the screen mid-session → audio continues; unlock → no audible jump.
-3. **Android, sleep:** 10 minutes screen-off, then copy the connection log. Compare
-   **freezes / peer leaves / rejoins / longest stall** against the baseline — the summary line
-   at the top of the log is the regression signal.
-4. **Rejoin:** reload a follower → it comes back on the Ready ring for the room it was in,
-   with no code to type, and one tap rejoins it. Scan the screen's QR from a second device →
-   joins that room.
-5. **Two clients, 5 minutes foreground:** `mode: locked`, single-digit-ms drift, `rate ≈ 1`,
-   still tracking across a loop wrap; the screen's listener count is right.
-6. **Leave:** stop from both roles → the listener lands back on its Ready ring, the screen on
-   its Start button. Reload after that deliberate leave: the room is **not** offered again,
-   so a phone lands on Start rather than on a ring for a room nobody is leading.
-
-## Videos & adding your own
-
-The leader picks the video from a dropdown; the choice is broadcast in each beat (`mediaId`)
-so followers load the matching audio. Four options ship (`src/content/index.ts`):
-
-| id         | Video (screen)                         | Audio (followers)               | Delivery                                                  |
-| ---------- | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
-| `test`     | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline)                  |
-| `agent327` | `agent-327.mp4` (~38 MB H.264, 3m52s)  | `agent-327.m4a` (~3.6 MB)       | remote (`content.dev.pladia.live`), **`streaming: true`** |
-| `soh`      | `soh.mp4` (~127 MB H.264)              | `soh.m4a` (~14 MB)              | remote (`content.dev.pladia.live`), **`streaming: true`** |
-| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, **`streaming: true`**                             |
-
-**Followers only ever download the audio** — the screen fetches the video, each follower only
-the soundtrack (e.g. ~14 MB vs ~127 MB for `soh`). With `streaming: true` the follower doesn't
-even fetch the whole soundtrack up front: it pulls ~60 s of compressed audio at a time, roughly
-1.3× the audio bitrate sustained (~20 KB/s at ~128 kbps), for as long as it's listening.
-
-A `videoUrl`/`soundtrackUrl` can be a bundled import (precached), a `public/media/` path
-(served by path, runtime-cached), or an absolute URL on static hosting — the three remote options
-use the last. Absolute URLs used by a `streaming` entry **must** serve `Accept-Ranges: bytes`
-and permissive CORS.
-
-To add your own, produce a browser-friendly **H.264 + AAC-LC** MP4 and its extracted audio,
-then add an entry to `VIDEOS`. From a source file:
-
-```bash
-# audio the followers play (stream-copy the AAC → identical timeline, tiny download):
-ffmpeg -i source.mov -vn -c:a copy -movflags +faststart mine.m4a
-# video the screen plays — transcode to H.264 if the source is HEVC/H.265 (Chrome can't
-# decode HEVC) or AV1 (Safari decodes AV1 only on M3+/A17-class hardware):
-ffmpeg -i source.mov -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -c:a copy -movflags +faststart mine.mp4
-```
-
-(If the source is already H.264/AAC, remux instead: `ffmpeg -i source.mp4 -c copy -movflags +faststart mine.mp4`.)
-Keep the audio a stream-copy of the video's own track so their timelines match exactly, and
-keep `+faststart` on the audio — the streaming engine needs the `moov` in the first 24 MB.
-
-## Notes & limits
-
-- **iOS audio / the ringer switch:** a bare `<audio>` element is "ambient" audio on iOS and
-  is silenced by the physical mute switch and silent mode (playback still advances — you'd
-  see the drift move but hear nothing). Follower audio is therefore always routed through the
-  **Web Audio API** (context resumed in the join tap), which plays regardless of the mute
-  switch. The debug panel's `audio out` row shows `web-audio (mute-switch safe)` when this is
-  active. AAC/m4a itself is natively supported on iOS — format is not the issue.
-- **Background / lock-screen playback:** iOS suspends the AudioContext when the screen locks,
-  and both platforms throttle the ~15 Hz corrector and the WebRTC beats when the page is
-  hidden. The follower's output stage is therefore permanently split into two legs from a shared
-  master gain — a **direct leg** (`ctx.destination`) and a **sink leg**
-  (`MediaStreamAudioDestinationNode` → `<audio>` element registered as the **MediaSession**) —
-  and `visibilitychange` cross-fades between them over 6 ms rather than re-wiring nodes:
-  1. iOS keeps the sink leg audible throughout (it's what survives the lock, and it bypasses
-     the mute switch). Android/desktop keep the direct leg audible in the foreground and swap
-     to the sink when backgrounding, skipping content forward by the sink's added buffering so
-     the audio doesn't fall behind the screen.
-  2. **The sink leg is never silent.** Chrome on Android won't freeze a page that is playing
-     audio, and freezing kills the WebRTC connection with it — so even in the foreground the
-     sink element is fed a far-below-audible copy (`KEEPALIVE_GAIN`, 0.005 ≈ 46 dB down) to keep
-     the page alive for the whole session. Tune or disable with `?kagain=<0–1>`.
-  3. On hide, the streaming engine also pre-schedules a **chain of buffer sources directly on
-     the audio thread** (~180 s runway, topped up from each source's `onended`), so playback
-     free-runs without needing a timer.
-     The chain runs at the **measured screen:device clock ratio** — a least-squares fit of target
-     seconds against context seconds, clamped to ±0.5 % — rather than a blind 1.0, so a locked
-     phone drifts far less than the crystals' ppm difference would imply. On wake the chain is
-     deliberately left playing (WebRTC takes seconds to return) until a live target arrives, at
-     which point a properly synced source starts and the chain is cut at the same de-clicked
-     instant. Tuning knobs for on-device work: `?runway=<sec>` (background runway),
-     `?sinklat=<sec>` (the sink's assumed added latency, default 0.15) and `?kagain=<gain>`.
-- **Reconnect after sleep:** Android takes its Wi-Fi down at screen-off — measured, with plain
-  HTTPS fetches timing out sixteen times running while the page itself stayed fully awake — so
-  the listener vanishes from the screen's count while its audio keeps free-running. A watchdog in
-  the session (`src/core/transport-watchdog.ts`) rejoins the room if beats have been absent
-  > 6 s, without touching the audio
-  > engine — no gesture needed, and the free-run chain keeps sounding across the reconnect. While
-  > hidden it only attempts a rejoin once a `/api/ping` probe has shown the network is back, since
-  > otherwise it is rebuilding rooms against a radio that is not listening; on becoming visible it
-  > rejoins straight away if the link is stale. If the tab is discarded outright, the room code is kept in
-  > `sessionStorage` and the landing page offers a one-tap **Rejoin** (re-unlocking audio needs a
-  > real gesture, so that part can't be automatic).
-- **Automatic output-latency compensation (BYOD — no manual calibration):** what you _hear_
-  trails the element/context clock by the device's output latency (~100–300 ms on iOS;
-  Bluetooth adds even more). We measure it at runtime from
-  `AudioContext.getOutputTimestamp()` (`currentTime − contextTime` = the true
-  scheduling→output delay, and it reflects the real output path _including Bluetooth_),
-  smoothed, with `outputLatency` as a fallback and a conservative default only if both read 0.
-  Audio is steered ahead by that amount so the _audible_ audio lands on the video. The debug
-  `latency comp: auto N ms` shows the live estimate (≈220 ms on the test Chrome). Note:
-  `outputLatency` is unreliable (0 on iOS Safari and 0-until-warmup on Chrome), which is why
-  `getOutputTimestamp` is the primary signal. The estimate is **held for 4 s after a wake**,
-  when platform readings are noisy enough to look like real drift.
-- **Loop wrap on streaming sources:** on a track too long to fit in one window nothing is
-  decoded across the seam, so when the target wraps to 0 the follower briefly shows `syncing`
-  while a fresh window fetches and decodes. Tracks that fit in one window loop on the audio
-  thread and have no seam at all (measured: 1–7 ms drift across a wrap on the 20 s clip).
-- **The memory-safe path needs `AudioDecoder`** — Chromium, Firefox 130+, or **Safari 26+**
-  (not iOS 16.4; that was video-only WebCodecs). Without it, iOS uses the whole-file buffer
-  engine for everything, at ~23 MB per minute of decoded float32 PCM: ~337 MB for the
-  15-minute asset, ~900 MB for the 45-minute one. **Both are confirmed playing on an iPhone on
-  iOS 18.7** (`?debug=1` shows `engine = buffer`, `audio out = web-audio`), so there is no
-  cap in the code — a limit was tried and removed, because it refused content that demonstrably
-  works. Where the real ceiling is remains unknown, and it will differ by device; every decode
-  now logs its measured size to the `audio` diagnostic category, and that log survives a tab
-  discard, so a device that _is_ killed still reports what it was holding.
-- The follower's soundtrack is a **stream-copy of the video's own AAC**, so their timelines
-  are bit-identical (no encoder-delay offset).
-- Fixed leader (no migration); star topology, in the transport as well as the protocol.
-  Trystero meshes a room by default — every peer dials every other — which for this app is
-  pure cost, since nothing is ever sent follower to follower: at 30 phones, 435 of the 465
-  connections would carry nothing while each phone held 30 relayed connections instead of
-  one. **Followers therefore join `passive`**, which makes them refuse each other and dial
-  only the screen. Verified with one screen and two followers: each follower reports one
-  peer, the screen reports two.
-- **Peer signalling is the app's own Durable Object**
-  ([signal-relay.ts](worker/signal-relay.ts)) at `/signal`, served by the same Worker as the
-  SPA and `/api/ice` — a stateless Worker cannot hold the WebSockets, hence the DO. It
-  replaced free Nostr relays, which rate-limited peer discovery and sat in the path of every
-  join and every reconnect; peering measured 0.8 s against their 1.4–2.2 s. Trystero's public
-  backends have been removed rather than kept as a switch: only the app's own relay retains
-  announces, so selecting one would not be a like-for-like fallback but a quietly slower join
-  path for passive followers. ICE is **pinned to Cloudflare TURN, relay-only**
-  (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers replaced): the
-  Android connection-stability work needs every peer on the relay, so there is deliberately
-  no direct-path or public-STUN fallback to hide behind.
-- **The signalling connection outlives its socket.** Trystero asks for a relay once per room
-  and holds that reference for the room's life, so a dropped `/signal` socket used to end
-  discovery for good — a Worker redeploy left the screen playing happily to the listeners it
-  already had, listener count unchanged, and invisible to every join until its tab was
-  reloaded. Followers recovered only by accident, via the watchdog's room rebuild; a screen
-  has no such trigger, because from where it stands nothing went wrong. The connection in
-  [worker-strategy.ts](src/transport/worker-strategy.ts) now reconnects underneath Trystero
-  with jittered backoff (500 ms doubling to 15 s, 45 s while hidden, retried at once on
-  becoming visible), re-subscribes the room's topics and **re-announces** — the relay drops a
-  socket's retained announce when it closes, so without that last step the room would come
-  back silent to new joiners. Peer connections are untouched throughout; the room is never
-  rebuilt. Verified by killing the Worker mid-session: drop seen in 1 s, recovery logged with
-  `2 topics restored`, and the next listener peered in under a second.
-- **TURN credentials are minted per client, not built in.** A Cloudflare Worker
-  ([worker/index.ts](worker/index.ts)) holds the long-lived TURN key and issues a short-lived
-  pair from `/api/ice`; the client re-fetches whenever its grant is within 5 minutes of
-  expiry, **including on the watchdog's rejoin**. A baked-in credential would expire
-  mid-session and make every reconnect fail silently — indistinguishable from the bug the
-  relay was added to fix.
-- Same-network tests show ~0 ms clock offset; across real devices the offset estimate
-  (NTP-class clocks + RTT compensation) is what keeps drift small — the instrument to watch
-  is the follower's drift meter.
-- Add or swap videos via the dropdown + `VIDEOS` in `src/content/index.ts` — see
-  "Videos & adding your own" above.
-- The large real assets live on remote static hosting (local copies in git-ignored
-  `public/media/` for regeneration). The committed `test` clip is what stays
-  offline-guaranteed.
+The reasoning behind each of these, and what is still unmeasured, is in
+[FEASIBILITY.md](FEASIBILITY.md).
