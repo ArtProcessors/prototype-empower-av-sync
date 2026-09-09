@@ -338,19 +338,21 @@ audio path — and **capture a baseline sleep log first**, so step 3 has somethi
 against. `yarn build` runs the app, Worker and sim type-checks; `yarn sim` runs the unit
 checks; `yarn format:check` runs Prettier.
 
-1. **iOS, join:** tap Join → audible within a few seconds, debug panel shows
-   `engine: buffer` or `stream` and `audio out: web-audio`. Flick the ringer switch off —
+1. **iOS, join:** tap the ring → audible within a few seconds, and the debug overlay's rows
+   show `engine: buffer` or `stream` and `audio out: web-audio`. Flick the ringer switch off —
    still audible.
 2. **iOS, lock:** lock the screen mid-session → audio continues; unlock → no audible jump.
 3. **Android, sleep:** 10 minutes screen-off, then copy the connection log. Compare
    **freezes / peer leaves / rejoins / longest stall** against the baseline — the summary line
    at the top of the log is the regression signal.
-4. **Rejoin:** reload a follower → the rejoin card offers the right room code. Scan the
-   screen's QR from a second device → joins that room.
+4. **Rejoin:** reload a follower → it comes back on the Ready ring for the room it was in,
+   with no code to type, and one tap rejoins it. Scan the screen's QR from a second device →
+   joins that room.
 5. **Two clients, 5 minutes foreground:** `mode: locked`, single-digit-ms drift, `rate ≈ 1`,
    still tracking across a loop wrap; the screen's listener count is right.
-6. **Leave:** leave from both roles → both land on the entry screen, and the rejoin card does
-   **not** appear after a deliberate leave.
+6. **Leave:** stop from both roles → the listener lands back on its Ready ring, the screen on
+   its Start button. Reload after that deliberate leave: the room is **not** offered again,
+   so a phone lands on Start rather than on a ring for a room nobody is leading.
 
 ## Videos & adding your own
 

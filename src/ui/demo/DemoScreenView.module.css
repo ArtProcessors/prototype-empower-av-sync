@@ -2,8 +2,9 @@
  * The demo screen: video edge to edge, QR code over it.
  *
  * Everything here is an overlay on the picture a room full of people is
- * looking at, so each one earns its place — the QR card permanently, the
- * alert and the operator's controls only when they are wanted.
+ * looking at, so each one earns its place — the QR card permanently, and the
+ * signalling alert only while it has something to say. Anything an operator
+ * rather than an audience wants is `?debug=1`'s, and sits in its own overlay.
  */
 .screen {
   position: fixed;
@@ -61,8 +62,8 @@
   text-indent: 0.2em;
   letter-spacing: 0.2em;
 }
-/* Opposite corner from the QR and below the controls, so it can never land on
-   either however narrow the display is. */
+/* Opposite corner from the QR, so the two can never land on each other
+   however narrow the display is. */
 .alert {
   position: absolute;
   inset-block-end: max(24px, env(safe-area-inset-bottom));
@@ -75,29 +76,4 @@
   background: rgb(43 36 16 / 0.94);
   color: var(--colour-caution-text);
   text-wrap: pretty;
-}
-/* Reachable but never part of the picture: barely there until pointed at or
-   tabbed into. */
-.controls {
-  position: absolute;
-  inset-block-start: max(16px, env(safe-area-inset-top));
-  inset-inline-end: max(16px, env(safe-area-inset-right));
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 14px;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.5);
-  opacity: 0.18;
-  transition: opacity 180ms ease;
-}
-.controls:hover,
-.controls:focus-within {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .controls {
-    transition: none;
-  }
 }
