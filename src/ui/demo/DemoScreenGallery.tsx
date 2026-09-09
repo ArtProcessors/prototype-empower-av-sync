@@ -29,7 +29,7 @@
  *
  * The start screen's "Listen on this device instead" is inert here. This is a
  * preview of the screen's own views, and the listener's states are a page of
- * their own — see `?rings=1` and `ui/demo/DemoStatusGallery.tsx`.
+ * their own — see `/dev/rings` and `ui/demo/DemoStatusGallery.tsx`.
  *
  * Not a session host: it never joins anything, and is routed in `index.tsx`
  * before `useSync` for that reason.
@@ -247,7 +247,7 @@ const SILENT_WAVEFORM: AudioWaveform = {
  * there: StrictMode invokes a component body twice, and two elements would
  * mean the one being played is not the one that got mounted. Lazy because
  * `index.tsx` imports this module on every page load and only routes to it on
- * `?screens=1` — a `<video>` built for a page nobody opened is waste.
+ * `/dev/screens` — a `<video>` built for a page nobody opened is waste.
  */
 let galleryVideoOutput: DomScreenVideoOutput | null = null
 

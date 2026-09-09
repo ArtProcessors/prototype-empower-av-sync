@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { joinUrl } from '../../core/join-link'
 import { classNames } from '../class-names'
 import { driftClassName, formatSignedDrift } from '../drift'
+import { appLocation } from '../launch-intent'
 import { withUiMode } from '../ui-mode'
 import styles from './debug.module.css'
 import type { ViewProps } from '../view-props'
@@ -118,7 +119,10 @@ export function DebugPanel({ state }: ViewProps) {
             label="join url"
             value={
               <code className={styles.url}>
-                {withUiMode(joinUrl(transport.roomCode), 'debug')}
+                {withUiMode(
+                  joinUrl(transport.roomCode, appLocation()),
+                  'debug',
+                )}
               </code>
             }
           />

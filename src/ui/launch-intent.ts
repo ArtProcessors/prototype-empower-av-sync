@@ -10,6 +10,11 @@
  *
  *     /?video=soh&autostart=1
  *
+ * Both halves of the URL are read here, and they answer different questions.
+ * The path says which page this load is — the app, or one of the development
+ * galleries — and lives in `launch-path.ts`. The query string configures the
+ * page the path chose, and nothing in it selects a page any more.
+ *
  * Deliberately not a router, and the difference matters. A router exists to
  * react to the URL changing; this is read once and frozen, because the session
  * builds its `<video>` element before the first render and can never rebuild
@@ -23,6 +28,7 @@
  */
 import { roomCodeFromSearch } from '../core/join-link'
 import { readRejoinRoom } from '../core/rejoin-memory'
+import { launchPathFrom, type LaunchPage } from './launch-path'
 import { uiModeFromSearch, type UiMode } from './ui-mode'
 
 /** Query parameter naming the video the screen leads with, e.g. `?video=soh`. */
@@ -31,31 +37,20 @@ export const VIDEO_QUERY_PARAM = 'video'
 /** Query parameter asking the screen to start itself, e.g. `?autostart=1`. */
 export const AUTOSTART_QUERY_PARAM = 'autostart'
 
-/**
- * Query parameter opening the follower's ring gallery instead of the app, e.g.
- * `?rings=1`. A development page and no part of either UI — see
- * `ui/demo/DemoStatusGallery.tsx`.
- */
-export const RINGS_QUERY_PARAM = 'rings'
-
-/**
- * Query parameter opening the screen's state gallery instead of the app, e.g.
- * `?screens=1`. The other half of `?rings=`, and a development page in the
- * same way — see `ui/demo/DemoScreenGallery.tsx`.
- */
-export const SCREENS_QUERY_PARAM = 'screens'
-
-/**
- * Query parameter opening the caption gallery instead of the app, e.g.
- * `?captions=1`. A development page like the two above: it plays a real
- * transcript against a clock of its own, so line lengths and reading pace can
- * be judged without holding a fifteen-minute session open — see
- * `ui/demo/DemoTranscriptGallery.tsx`.
- */
-export const CAPTIONS_QUERY_PARAM = 'captions'
-
 /** What the page's URL asks this device to be. */
 export interface LaunchIntent {
+  /**
+   * Which page this load is, from the path. Everything below it configures
+   * that page; nothing below it can change which one it is.
+   */
+  page: LaunchPage
+  /**
+   * The path the app is served from — where a join link points. From the
+   * path too, and the reason it is here rather than derived at the QR: a
+   * development page that draws the real screen view must still hand out a
+   * link to the app. See {@link appLocation}.
+   */
+  appPath: string
   /** Which UI to render. */
   ui: UiMode
   /**
@@ -72,23 +67,6 @@ export interface LaunchIntent {
   video: string | null
   /** Whether the screen should start without waiting for a tap. */
   autostart: boolean
-  /**
-   * Whether to open the ring gallery rather than a session at all. Sits with
-   * the rest of the intent because it is still the URL saying what this page
-   * is; unlike the others, nothing downstream of it ever joins a room.
-   */
-  rings: boolean
-  /**
-   * Whether to open the screen's state gallery rather than a session. The
-   * same kind of page as {@link LaunchIntent.rings}, for the other half of
-   * the demo; `?rings=` wins if a URL somehow asks for both.
-   */
-  screens: boolean
-  /**
-   * Whether to open the caption gallery rather than a session. The third page
-   * of the same kind, and last in the same precedence.
-   */
-  captions: boolean
 }
 
 /**
@@ -103,21 +81,24 @@ function flagFromParams(params: URLSearchParams, name: string): boolean {
   return value !== null && value !== '0' && value !== 'false'
 }
 
-/** The intent a query string carries. */
-export function launchIntentFromSearch(search: string): LaunchIntent {
+/** The intent a path and query string carry together. */
+export function launchIntentFrom(
+  pathname: string,
+  search: string,
+): LaunchIntent {
   const params = new URLSearchParams(search)
   const video = params.get(VIDEO_QUERY_PARAM)
+  const path = launchPathFrom(pathname)
 
   return {
+    page: path.page,
+    appPath: path.appPath,
     ui: uiModeFromSearch(search),
     room: roomCodeFromSearch(search),
     // A blank `?video=` names nothing, unlike a blank `?room=`: there is no
     // "deliberately no video" to express — the catalogue always has a default.
     video: video === null || video === '' ? null : video,
     autostart: flagFromParams(params, AUTOSTART_QUERY_PARAM),
-    rings: flagFromParams(params, RINGS_QUERY_PARAM),
-    screens: flagFromParams(params, SCREENS_QUERY_PARAM),
-    captions: flagFromParams(params, CAPTIONS_QUERY_PARAM),
   }
 }
 
@@ -132,9 +113,28 @@ let current: LaunchIntent | null = null
  * that happens long after the tap it describes.
  */
 export function currentLaunchIntent(): LaunchIntent {
-  current ??= launchIntentFromSearch(window.location.search)
+  current ??= launchIntentFrom(
+    window.location.pathname,
+    window.location.search,
+  )
 
   return current
+}
+
+/**
+ * Where the app is, for building a join link off — the shape
+ * `core/join-link.ts` takes.
+ *
+ * Not `window.location`, which is what the QR used to be built from. That was
+ * correct only for as long as the app was the sole page: the screen state
+ * gallery renders the real `DemoScreenView`, so a code drawn there would
+ * otherwise send a phone to `/dev/screens?room=…` and a second gallery.
+ */
+export function appLocation(intent: LaunchIntent = currentLaunchIntent()): {
+  origin: string
+  pathname: string
+} {
+  return { origin: window.location.origin, pathname: intent.appPath }
 }
 
 /**

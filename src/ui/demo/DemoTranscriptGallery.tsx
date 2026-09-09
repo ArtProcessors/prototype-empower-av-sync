@@ -16,7 +16,7 @@
  * lands right there.
  *
  * Which video it plays comes from `?video=`, the same parameter the screen
- * takes, so `/?captions=1&video=agent327` is the whole of switching content.
+ * takes, so `/dev/captions?video=agent327` is the whole of switching content.
  * With none named it picks the first video that has a transcript at all.
  *
  * Not a session host: it never joins anything, and is routed in `index.tsx`
@@ -127,7 +127,9 @@ export function DemoTranscriptGallery() {
   useEffect(() => {
     let live = true
 
-    void loadTranscript(VIDEO.id).then(loaded => {
+    // Resolves to `null` rather than rejecting when the chunk cannot be
+    // fetched, so there is nothing to catch here.
+    loadTranscript(VIDEO.id).then(loaded => {
       if (live) {
         setTranscript(loaded)
       }

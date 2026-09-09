@@ -17,10 +17,11 @@ import { summariseDiagnostics } from '../src/diagnostics/summary.ts'
 import type { DiagnosticEvent } from '../src/diagnostics/session-log.ts'
 import { joinUrl, roomCodeFromSearch } from '../src/core/join-link.ts'
 import {
-  launchIntentFromSearch,
+  launchIntentFrom,
   roomToJoin,
   type LaunchIntent,
 } from '../src/ui/launch-intent.ts'
+import { launchPathFrom } from '../src/ui/launch-path.ts'
 import { sessionConfig } from '../src/core/config.ts'
 import {
   isRoomCodeAcceptable,
@@ -298,38 +299,81 @@ console.log('\n[9] diagnostics summary (tags, and the wording fallback)')
 
 console.log('\n[10] launch intent (the URL, read once, in one place)')
 {
-  const bare = launchIntentFromSearch('')
+  // The path chooses the page; every parameter below configures the page it
+  // chose. Both halves are asserted, because the split between them is the
+  // reason a link is readable at all.
+  const intentFor = (search: string, pathname = '/') =>
+    launchIntentFrom(pathname, search)
+  const bare = intentFor('')
 
   assert(
-    bare.ui === 'demo' &&
+    bare.page === 'app' &&
+      bare.ui === 'demo' &&
       bare.room === null &&
       bare.video === null &&
       !bare.autostart,
     'a bare URL asks for nothing',
   )
 
-  const kiosk = launchIntentFromSearch('?video=soh&autostart=1')
+  const kiosk = intentFor('?video=soh&autostart=1')
 
   assert(kiosk.video === 'soh', '?video= names what the screen leads with')
   assert(kiosk.autostart, '?autostart=1 asks the screen to start itself')
   assert(
-    launchIntentFromSearch('?video=').video === null,
+    intentFor('?video=').video === null,
     'a blank ?video= names nothing — unlike ?room=, there is no ' +
       '"deliberately none" to express',
   )
   assert(
-    launchIntentFromSearch('?autostart').autostart &&
-      !launchIntentFromSearch('?autostart=0').autostart &&
-      !launchIntentFromSearch('?autostart=false').autostart,
+    intentFor('?autostart').autostart &&
+      !intentFor('?autostart=0').autostart &&
+      !intentFor('?autostart=false').autostart,
     'the flag reads the same way ?debug= does: bare on, 0 and false off',
   )
   assert(
-    launchIntentFromSearch('?debug=1&video=soh').ui === 'debug',
+    intentFor('?debug=1&video=soh').ui === 'debug',
     'a launch video and the debug UI are not exclusive',
   )
   assert(
-    launchIntentFromSearch('?rings=1').rings && !bare.rings,
-    '?rings=1 asks for the ring gallery instead of a session',
+    intentFor('', '/dev/rings').page === 'rings',
+    'the ring gallery is a path, not a flag among the session knobs',
+  )
+  assert(
+    intentFor('?video=soh', '/dev/captions').page === 'captions' &&
+      intentFor('?video=soh', '/dev/captions').video === 'soh',
+    'a development page still takes the configuration it needs',
+  )
+}
+
+console.log('\n[10b] launch path (which page, and where the app is)')
+{
+  assert(
+    launchPathFrom('/').page === 'app' && launchPathFrom('/').appPath === '/',
+    'the root is the app, and the app is where a join link points',
+  )
+  assert(
+    launchPathFrom('/dev/rings').page === 'rings' &&
+      launchPathFrom('/dev/screens').page === 'screens' &&
+      launchPathFrom('/dev/captions').page === 'captions',
+    'each development page has a path of its own',
+  )
+  assert(
+    launchPathFrom('/dev/rings/').page === 'rings',
+    'a trailing slash is not a distinction a page can notice',
+  )
+  assert(
+    launchPathFrom('/dev/screens').appPath === '/',
+    'a gallery hands out a link to the app, not to itself — the screen ' +
+      'gallery draws the real QR',
+  )
+  assert(
+    launchPathFrom('/app/dev/screens').appPath === '/app/' &&
+      launchPathFrom('/app/dev/screens').page === 'screens',
+    'matched as a suffix, so the app stays movable under a base path',
+  )
+  assert(
+    launchPathFrom('/rings').page === 'app',
+    'the old flag names are not paths: anything unrecognised is the app',
   )
 }
 
@@ -361,13 +405,12 @@ console.log('\n[11] roomToJoin (screen or listener, decided in one place)')
   }
 
   const asking = (over: Partial<LaunchIntent>): LaunchIntent => ({
+    page: 'app',
+    appPath: '/',
     ui: 'demo',
     room: null,
     video: null,
     autostart: false,
-    rings: false,
-    screens: false,
-    captions: false,
     ...over,
   })
 

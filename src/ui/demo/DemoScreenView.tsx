@@ -1,6 +1,6 @@
 import { joinUrl } from '../../core/join-link'
 import { classNames } from '../class-names'
-import { currentLaunchIntent } from '../launch-intent'
+import { appLocation, currentLaunchIntent } from '../launch-intent'
 import { QRCode } from '../QRCode'
 import { withUiMode } from '../ui-mode'
 import type { SessionViewProps } from '../view-props'
@@ -43,7 +43,10 @@ type Props = SessionViewProps & {
  * `?debug=1`, which puts its instruments over this view rather than in it.
  */
 export function DemoScreenView({ transport, mountScreenVideo }: Props) {
-  const listenerUrl = withUiMode(joinUrl(transport.roomCode), UI_MODE)
+  const listenerUrl = withUiMode(
+    joinUrl(transport.roomCode, appLocation()),
+    UI_MODE,
+  )
 
   return (
     <main className={classNames(demo.shell, styles.screen)}>

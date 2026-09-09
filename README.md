@@ -158,7 +158,7 @@ underneath Trystero and re-announces ([worker-strategy.ts](src/transport/worker-
 **Zero-touch screens** — a display can be told what to be entirely by the link it
 is switched on with (`/?video=soh&autostart=1`), so an installed screen needs
 nobody standing at it. With no `?video=`, it comes back on whatever it last led
-with. See [URL parameters](#url-parameters).
+with. See [Paths & URL parameters](#paths--url-parameters).
 
 **Live captions, off the same clock** ([transcript.ts](src/core/transcript.ts))
 — a follower can show the words as they are spoken, opt-in per device from the
@@ -178,24 +178,42 @@ range-fetched throughout playback.
 **Headless core** — `src/core` composes the whole session with no React and no
 JSX; `src/ui` is one host on top of it. See [Reusing the core](#reusing-the-core).
 
-## URL parameters
+## Paths & URL parameters
 
-Everything the URL can say is read once per page load, and frozen, in
-[launch-intent.ts](src/ui/launch-intent.ts) — deliberately not a router. Flags
-follow the `?debug=` reading: present and not `0`/`false` means on.
+The whole URL is read once per page load, and frozen, in
+[launch-intent.ts](src/ui/launch-intent.ts) — deliberately not a router. The two
+halves answer different questions, which is the only reason a launch link is
+readable at a glance: **the path picks the page, the query configures it.**
 
-| Parameter        | Effect                                                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `?debug=1`       | Raise the debug overlay over the normal views                                                                                                  |
-| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker                                                                 |
-| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                                                                   |
-| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                                                              |
-| `?rings=1`       | **Dev page:** gallery of every follower ring state ([DemoStatusGallery.tsx](src/ui/demo/DemoStatusGallery.tsx))                                |
-| `?screens=1`     | **Dev page:** gallery of every screen state ([DemoScreenGallery.tsx](src/ui/demo/DemoScreenGallery.tsx))                                       |
-| `?captions=1`    | **Dev page:** captions played under the video itself, honouring `?video=` ([DemoTranscriptGallery.tsx](src/ui/demo/DemoTranscriptGallery.tsx)) |
-| `?runway=<sec>`  | Background free-run runway (default 180)                                                                                                       |
-| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                                                                           |
-| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                                                                           |
+| Path            | Page                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/`             | The app — screen or listener, decided by how the device arrived                                                           |
+| `/dev/rings`    | **Dev page:** gallery of every follower ring state ([DemoStatusGallery.tsx](src/ui/demo/DemoStatusGallery.tsx))           |
+| `/dev/screens`  | **Dev page:** gallery of every screen state ([DemoScreenGallery.tsx](src/ui/demo/DemoScreenGallery.tsx))                  |
+| `/dev/captions` | **Dev page:** captions played under the video itself ([DemoTranscriptGallery.tsx](src/ui/demo/DemoTranscriptGallery.tsx)) |
+
+The paths are matched as a suffix in [launch-path.ts](src/ui/launch-path.ts), so
+the app can be served under a base path and still hand out a join link to
+itself rather than to the page the QR was drawn on — which the screen gallery,
+rendering the real `DemoScreenView`, otherwise would. Nothing navigates between
+these pages: a reload is the only way between them, because the session builds
+its `<video>` element before the first render and can never rebuild it. Serving
+them needs no config — the Worker (`not_found_handling`), the service worker's
+`NavigationRoute`, and Vite's dev server and `preview` all fall back to
+`index.html` already.
+
+Everything in the query string configures the page the path chose. Flags follow
+the `?debug=` reading: present and not `0`/`false` means on.
+
+| Parameter        | Effect                                                                         |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `?debug=1`       | Raise the debug overlay over the normal views                                  |
+| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker |
+| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)   |
+| `?room=<code>`   | Join as a listener — what the screen's QR carries                              |
+| `?runway=<sec>`  | Background free-run runway (default 180)                                       |
+| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                           |
+| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                           |
 
 **Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins even when
 blank (a listener's audio is not something a URL can unlock), then `?autostart=`
@@ -206,6 +224,7 @@ unattended was set up to be the screen.
 /?video=soh&autostart=1     a wall display, set up once
 /?video=soh                 the same, one tap to start
 /?debug=1&video=soh         the same video, with the instruments over it
+/dev/captions?video=soh     a dev page, configured the same way
 ```
 
 ## Debugging & diagnostics
@@ -339,10 +358,10 @@ labels simply never stacks a second row.
 Each file is a dynamic `import()`, so it lands in its own chunk, is fetched only
 when a listener switches captions on, and never loads on the screen at all. A
 video with no entry simply gets no toggle. Judge the line lengths, the reading
-pace and whether the words land on the right shot on `/?captions=1`, which
+pace and whether the words land on the right shot on `/dev/captions`, which
 plays the video itself with the captions under it and takes its clock from it —
 rather than by sitting through a session. It reads `?video=` like the screen
-does (`/?captions=1&video=soh`), defaulting to the first video that has words,
+does (`/dev/captions?video=soh`), defaulting to the first video that has words,
 and its **Two speakers** button jumps to the first hand-over close enough to
 stack two rows.
 

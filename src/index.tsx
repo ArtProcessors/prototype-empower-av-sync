@@ -19,29 +19,25 @@ if (import.meta.env.PROD) {
 }
 
 /**
- * What this page load is: the app, or one of the three development galleries.
+ * What this page load is: the app at `/`, or one of the three development
+ * galleries under `/dev/` — see `ui/launch-path.ts` for the paths.
  *
- * The galleries are routed here rather than inside `App` because none of them
- * is a host: `App` binds a session on its first render, and building one — with the
- * screen's `<video>` element and everything it drags in — for a page of states
- * that never joins a room would be waste with side effects.
+ * The galleries are chosen here rather than inside `App` because none of them
+ * is a host: `App` binds a session on its first render, and building one — with
+ * the screen's `<video>` element and everything it drags in — for a page of
+ * states that never joins a room would be waste with side effects.
  */
 function pageForLaunch(): ReactElement {
-  const intent = currentLaunchIntent()
-
-  if (intent.rings) {
-    return <DemoStatusGallery />
+  switch (currentLaunchIntent().page) {
+    case 'rings':
+      return <DemoStatusGallery />
+    case 'screens':
+      return <DemoScreenGallery />
+    case 'captions':
+      return <DemoTranscriptGallery />
+    case 'app':
+      return <App />
   }
-
-  if (intent.screens) {
-    return <DemoScreenGallery />
-  }
-
-  if (intent.captions) {
-    return <DemoTranscriptGallery />
-  }
-
-  return <App />
 }
 
 createRoot(document.getElementById('root')!).render(

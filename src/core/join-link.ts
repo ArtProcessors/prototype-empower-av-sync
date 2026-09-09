@@ -16,15 +16,21 @@ import { normaliseRoomCode } from './room-code'
 export const ROOM_QUERY_PARAM = 'room'
 
 /**
- * The URL a listener scans to join `roomCode`.
+ * The URL a listener scans to join `roomCode`, at `from`.
  *
  * Deliberately `origin + pathname` only: dropping the current query means a
  * screen that itself arrived through a join link does not put that older code
  * into its own QR.
+ *
+ * `from` is asked for rather than defaulted to `window.location`, which it
+ * used to be. Where the page is and where the app is stopped being the same
+ * thing once the development galleries moved to paths of their own — one of
+ * them draws the real screen view, QR included. The host decides: see
+ * `ui/launch-intent.ts`, `appLocation`.
  */
 export function joinUrl(
   roomCode: string,
-  from: { origin: string; pathname: string } = window.location,
+  from: { origin: string; pathname: string },
 ): string {
   return `${from.origin}${from.pathname}?${ROOM_QUERY_PARAM}=${roomCode}`
 }
