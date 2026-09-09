@@ -49,18 +49,25 @@ To rehearse exactly what deploys — **one origin** serving the app, `/signal` a
 service worker active — run `yarn build` then `yarn worker:dev` and open **:8787**. That is
 the only local mode with production's topology.
 
-## Two UIs
+## One UI, with the instruments optional
 
-The same session, `src/core`, is rendered by two hosts. Which one you get is a query
-parameter, read once per page load:
+There is one set of views (`src/ui/demo/`): video edge to edge with the join QR over it on a
+display, one button and one line of status on a phone. `?debug=1` does not swap them for a
+second set — it used to, and keeping two sets of views honest about the same session was work
+nobody was doing — it hangs the instruments over the top of whatever is showing.
 
-| URL         | UI                                                                                                                                                                 |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/`         | **Demo** (`src/ui/demo/`) — what a visitor sees. Video edge to edge with the join QR over it; on a phone, one button and one line of status.                       |
-| `/?debug=1` | **Debug** (`src/ui/debug/`) — the instrument this spike was built with: video picker, room-code entry, live drift readout, sync-state rows and the connection log. |
+| URL         | What you get                                                                                                                                         |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`         | The app. Nothing over the picture but the QR card.                                                                                                   |
+| `/?debug=1` | The same views, plus [DebugOverlay](src/ui/debug/DebugOverlay.tsx): live drift, sync-state rows, the connection log, the wake-lock switch and Leave. |
 
-A debug screen's QR carries `&debug=1`, so a phone scanning it lands in the debug follower;
-a demo screen's QR carries only the room. Nothing in `src/core` knows either exists.
+The overlay is a `position: fixed` panel in the top-left corner — the one corner neither view
+uses — and collapses to a chip, which is how it starts on a phone, where it would otherwise
+cover the ring you have to tap. Three things it cannot do from out there are settled at the
+seams that already read the launch intent: native controls on the screen's `<video>`, the
+video picker staying on the start screen when the link already named one, and the `&debug=1`
+the screen's QR carries, so a phone scanning an instrumented screen lands instrumented too.
+Nothing in `src/core` knows any of this exists.
 
 ## Setting a screen up from its URL
 
@@ -76,7 +83,7 @@ once per page load, and frozen, which is why this is not a router.
 
     /?video=soh&autostart=1     a wall display, set up once
     /?video=soh                 the same, one tap to start
-    /?debug=1&video=soh         the same video, with the instrument panel
+    /?debug=1&video=soh         the same video, with the instruments over it
 
 **Autostart works because the screen is muted.** The leader's `<video>` is muted and inline,
 which browsers allow to autoplay unprompted; followers are untouched by this, since their
@@ -99,9 +106,9 @@ build no longer ships falls back to the catalogue default.
 ## Try it — demo
 
 1. On the display device, open the app, **pick a video**, and tap **Start** (or open
-   `/?video=<id>&autostart=1` and it does both itself). The video goes
-   full-bleed and a QR card sits in the bottom-right corner. The operator controls (listener
-   count, Refresh, Stop) sit top-right at low opacity and come up on hover or focus.
+   `/?video=<id>&autostart=1` and it does both itself). The video goes full-bleed and a QR
+   card sits in the bottom-right corner. Nothing else is on the picture — whoever set the
+   display up has its URL and a reload, and `?debug=1` is where anything more lives.
 2. On phones, scan the QR and tap **Listen** (the tap unlocks audio on iOS). Put on
    headphones. The ring reports what the session is doing — downloading the soundtrack,
    reconnecting, in sync — and **Refresh** is always in the footer, promoted after 20 seconds
@@ -112,13 +119,20 @@ visible and audible: the click in your headphones should land on the flash on sc
 
 ## Try it — debug
 
-1. Open `/?debug=1` on the display device, **pick a video** from the dropdown, and tap
-   **📺 Be the screen** (starts the looping video and shows a room code + QR).
-2. On phones, scan the QR / enter the code and tap **🎧 Join**. Put on headphones — a live
-   **drift meter** shows how far off the phone is (ms).
+Add `?debug=1` to either half and everything above happens the same way, with the instruments
+on top of it.
 
-The debug panel's `engine` row shows which output path is live (`element`, `buffer`, `stream`,
-or `syncing` while a long soundtrack's first window loads).
+1. On the display, `/?debug=1`. The picker stays even when the link named a video, the
+   screen's `<video>` gets native controls to scrub and pause with, and the panel's
+   **join url** row is the QR's link in text, for a display no camera is pointed at.
+2. On phones, scan that QR — it carries `&debug=1` — and tap the ring. Open the **Debug**
+   chip: above the rows is the live **drift meter**, held back until the screen is actually
+   being heard from, since a drift of 0 reads the same whether it is right or absent.
+
+The panel's `engine` row shows which output path is live (`element`, `buffer`, `stream`, or
+`syncing` while a long soundtrack's first window loads). **Keep screen awake** is a switch
+there and nowhere else — the app turns the wake lock on for everyone and never offers it
+back, which is right for a visitor and useless for testing what a sleeping phone does.
 
 ## Deploy
 
@@ -228,7 +242,7 @@ different UI in another project without being rewritten.
 | `src/media/`            | The follower's corrector and its three output paths (`audio-sync-controller.ts`, `buffer-audio-engine.ts`, `streaming-buffer-engine.ts`).                                                                                               |
 | `src/diagnostics/`      | The session log and the monitors that feed it.                                                                                                                                                                                          |
 | `src/content/`          | _This app's_ media — the catalogue is handed to the core, not imported by it.                                                                                                                                                           |
-| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the session's snapshot; `ui/demo/` and `ui/debug/` are two sets of views over it, picked by `ui/ui-mode.ts`.                                                                                  |
+| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the session's snapshot; `ui/demo/` is the views, and `ui/debug/` is the overlay `?debug=1` puts over them (`ui/ui-mode.ts`).                                                                  |
 | `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig.                                                                                                                                                          |
 
 ### Reusing the core
@@ -260,7 +274,7 @@ default to what this app uses, and nothing here calls either.
 
 ## Diagnostics
 
-Both roles render a **Debug — connection log** below the main UI in the debug UI
+Under `?debug=1`, both roles get a **connection log** section in the debug overlay
 ([DiagnosticsPanel.tsx](src/ui/debug/DiagnosticsPanel.tsx)) — the instrument the connection-stability
 work was done with. It carries a summary line (freezes · peer leaves · rejoins · longest timer
 stall) and a one-tap **Copy log**, and the buffer is mirrored to `sessionStorage` so a log
@@ -290,8 +304,8 @@ restored`** — the relay socket died and came back, with the room's subscriptio
 - **`FROZEN by the browser`** and **`gap 41.2s`** — Chrome froze the page, or the 1 Hz liveness
   timer stalled. The two symptoms of Android power-save killing a session.
 
-The separate audio debug panel above it shows the live `engine`, `audio out` and
-`latency comp` rows.
+The sync-state rows above it in the same overlay show the live `engine`, `audio out` and
+`latency comp`.
 
 ## Verification
 

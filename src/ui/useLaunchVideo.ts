@@ -10,9 +10,11 @@ import type { ViewProps } from './view-props'
  * the React binding for the *core*; this is one UI decision — what an operator
  * can set up from a link — expressed against the session's public actions.
  *
- * Both UIs call it. The demo is the reason it exists, but a `?video=` that
- * silently did nothing under `&debug=1` would send whoever was debugging a
- * kiosk URL hunting for a fault that was never there.
+ * A kiosk URL is honoured the same way under `&debug=1` — one that silently
+ * did nothing there would send whoever was debugging it hunting for a fault
+ * that was never there. What debug does change is that the picker stays: being
+ * able to override the link without editing it is most of the point of the
+ * flag.
  */
 
 /** What applying the launch intent left for a start screen to say. */
@@ -28,6 +30,7 @@ export interface LaunchVideoState {
    * Whether the operator still picks the video. False once the URL named a
    * real one — removing that step is the point of naming it — and true again
    * when the name was wrong, so there is a way on without editing the link.
+   * Always true under `?debug=1`, where overriding the link is the job.
    */
   canSelectVideo: boolean
 }
@@ -81,6 +84,6 @@ export function useLaunchVideo({
       ? null
       : `This link asks for a video called “${requested}”, which this build ` +
         `does not have.`,
-    canSelectVideo: requested === null || !known,
+    canSelectVideo: intent.ui === 'debug' || requested === null || !known,
   }
 }

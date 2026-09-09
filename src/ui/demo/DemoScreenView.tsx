@@ -1,9 +1,23 @@
 import { joinUrl } from '../../core/join-link'
 import { classNames } from '../class-names'
+import { currentLaunchIntent } from '../launch-intent'
 import { QRCode } from '../QRCode'
+import { withUiMode } from '../ui-mode'
 import type { SessionViewProps } from '../view-props'
 import demo from './demo.module.css'
 import styles from './DemoScreenView.module.css'
+
+/**
+ * The mode a scanned join link should open in.
+ *
+ * A phone scanning a screen that is being debugged wants the same instruments
+ * the screen has, so the marker is carried through the QR — see
+ * {@link withUiMode}, which adds nothing at all in the ordinary case. Read at
+ * module scope from the same frozen launch intent everything else uses, so the
+ * code in the QR cannot change under a phone that is part-way through reading
+ * it.
+ */
+const UI_MODE = currentLaunchIntent().ui
 
 /**
  * Resolution the join QR is generated at.
@@ -23,17 +37,13 @@ type Props = SessionViewProps & {
  * The demo screen: the video, edge to edge, and the code to scan.
  *
  * Everything else is deliberately absent. This is the thing a room full of
- * people is looking at, so the only permanent overlay is the QR card; the
- * operator's controls sit in a corner at low opacity and come up on hover or
- * focus, reachable without ever being part of the picture.
+ * people is looking at, so the only permanent overlay is the QR card, and the
+ * only other one is the alert that says nobody new can join. Whoever set the
+ * display up has the URL and a reload; anything more than that belongs to
+ * `?debug=1`, which puts its instruments over this view rather than in it.
  */
-export function DemoScreenView({
-  transport,
-  mountScreenVideo,
-}: Props) {
-  // No UI-mode marker: a demo screen's QR should send phones to the demo
-  // follower, which is what a plain join link already does.
-  const listenerUrl = joinUrl(transport.roomCode)
+export function DemoScreenView({ transport, mountScreenVideo }: Props) {
+  const listenerUrl = withUiMode(joinUrl(transport.roomCode), UI_MODE)
 
   return (
     <main className={classNames(demo.shell, styles.screen)}>

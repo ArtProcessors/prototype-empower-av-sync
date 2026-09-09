@@ -1,31 +1,37 @@
 /**
- * Which of the two UIs this page is running: the consumer-facing demo, or the
- * instrumented debug UI the spike was built with.
+ * Whether this page is running with the instruments up.
  *
- * The two are the same session behind different pixels — `src/core` does not
- * know either exists — so the choice is a page-load-time reading of the URL
- * rather than session state. Nothing switches mode mid-session, which is what
- * lets `useSync` bake the mode into the screen's `<video>` element.
+ * There is one set of views. `?debug=1` does not select a second UI — it used
+ * to, and keeping two sets of views honest about the same session turned out
+ * to be work nobody was doing — it adds `ui/debug/DebugOverlay` over the top of
+ * the one that exists, plus the two things an overlay cannot do for itself:
+ * native controls on the screen's `<video>`, and the picker staying on the
+ * start screen when the link already named a video.
+ *
+ * The choice is a page-load-time reading of the URL rather than session state,
+ * because both of those are spent before the first render — which is also what
+ * lets `useSync` bake the mode into the screen's `<video>` element. Nothing
+ * switches mode mid-session.
  *
  * The mode is one of several things a URL can say, and it is not read from
  * here directly: `launch-intent.ts` does that once for all of them, so a page
  * cannot end up half-agreeing with its own link.
  *
- * The mode has to survive the join link as well: a QR scanned off a *debug*
- * screen should land the phone in the debug follower, not the demo one. See
- * {@link withUiMode}, which the debug screen wraps its join URL in.
+ * The mode has to survive the join link as well: a QR scanned off a screen
+ * that is being debugged should land the phone in the same instrumented page.
+ * See {@link withUiMode}, which `DemoScreenView` wraps its join URL in.
  */
 
-/** Which UI is rendering: bare-bones demo, or instrumented debug. */
+/** Whether the debug instruments are up over the app's views. */
 export type UiMode = 'demo' | 'debug'
 
-/** Query parameter selecting the debug UI, e.g. `?debug=1`. */
+/** Query parameter raising the debug instruments, e.g. `?debug=1`. */
 export const UI_MODE_QUERY_PARAM = 'debug'
 
 /**
- * The UI a URL's query string asks for. Anything but a truthy `?debug=` is the
- * demo, so a plain link — which is what a consumer ever sees — is never the
- * debug UI by accident.
+ * The mode a URL's query string asks for. Anything but a truthy `?debug=` is
+ * the plain app, so a link — which is what a visitor ever sees — never comes
+ * up instrumented by accident.
  */
 export function uiModeFromSearch(search: string): UiMode {
   const value = new URLSearchParams(search).get(UI_MODE_QUERY_PARAM)
@@ -38,9 +44,9 @@ export function uiModeFromSearch(search: string): UiMode {
 }
 
 /**
- * `url` with the mode marker added, so a link built for one UI opens in that
- * same UI. Demo is the default and gets no marker — the QR a consumer scans
- * should carry nothing but the room.
+ * `url` with the mode marker added, so a link built on an instrumented page
+ * opens instrumented too. The plain app is the default and gets no marker —
+ * the QR a visitor scans should carry nothing but the room.
  */
 export function withUiMode(url: string, mode: UiMode): string {
   if (mode !== 'debug') {

@@ -8,12 +8,13 @@
 .actions {
   margin: 8px 0 4px;
 }
+/* Deliberately not its own scroller: the overlay this sits in is already one,
+   and a list that scrolled inside a panel that scrolls means a flick lands in
+   whichever of the two the finger happened to be over. */
 .log {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 320px;
-  overflow-y: auto;
   font-size: 0.8rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }

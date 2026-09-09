@@ -44,6 +44,10 @@ function formatClockTime(at: number): string {
  * The connection-stability instrument: a live event log of ICE transitions,
  * page freezes, timer stalls and rejoin attempts, with a one-tap copy so a log
  * can be taken off a phone after a sleep test.
+ *
+ * A section of the debug overlay rather than a panel of its own, so it is
+ * up wherever the overlay is — including on the start screen, which is where a
+ * discarded tab's reload lands with a log restored from `sessionStorage`.
  */
 export function DiagnosticsPanel() {
   const events = useSyncExternalStore(subscribeDiagnostics, diagnosticEvents)
@@ -62,8 +66,8 @@ export function DiagnosticsPanel() {
   }
 
   return (
-    <section className={debug.panel}>
-      <h2>Debug — connection log</h2>
+    <section className={debug.section}>
+      <h3 className={debug.sectionName}>Connection log</h3>
 
       <div className={debug.row}>
         <span className={debug.rowKey}>summary</span>
