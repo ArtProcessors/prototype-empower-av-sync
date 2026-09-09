@@ -1,0 +1,568 @@
+{
+  "status": "completed",
+  "text": "This is 327. I'm going in. Good luck, agent. Hello! I was just admiring the art. Haircut? But please. Such a lovely place you've got here. Is it usually this empty? Just a trim, please. Boris! Agent Kratos! Hello? Chief, you copy? I need backup. What are you doing? No, I just wanted a haircut! Looks like we've found our next recruit. Doctor, carry on with the procedure. We have to make room for Agent 327.",
+  "utterances": [
+    {
+      "speaker": "A",
+      "text": "This is 327. I'm going in.",
+      "confidence": 0.9555967,
+      "start": 13022,
+      "end": 15337,
+      "words": [
+        {
+          "text": "This",
+          "start": 13022,
+          "end": 13152,
+          "confidence": 0.90770024,
+          "speaker": "A"
+        },
+        {
+          "text": "is",
+          "start": 13249,
+          "end": 13314,
+          "confidence": 0.9976198,
+          "speaker": "A"
+        },
+        {
+          "text": "327.",
+          "start": 13411,
+          "end": 14123,
+          "confidence": 0.85122347,
+          "speaker": "A"
+        },
+        {
+          "text": "I'm",
+          "start": 14803,
+          "end": 14949,
+          "confidence": 0.9916193,
+          "speaker": "A"
+        },
+        {
+          "text": "going",
+          "start": 14965,
+          "end": 15159,
+          "confidence": 0.9972307,
+          "speaker": "A"
+        },
+        {
+          "text": "in.",
+          "start": 15288,
+          "end": 15337,
+          "confidence": 0.98818654,
+          "speaker": "A"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "Good luck, agent.",
+      "confidence": 0.84453,
+      "start": 15596,
+      "end": 16422,
+      "words": [
+        {
+          "text": "Good",
+          "start": 15596,
+          "end": 15758,
+          "confidence": 0.8847477,
+          "speaker": "B"
+        },
+        {
+          "text": "luck,",
+          "start": 15758,
+          "end": 15920,
+          "confidence": 0.98571026,
+          "speaker": "B"
+        },
+        {
+          "text": "agent.",
+          "start": 16001,
+          "end": 16422,
+          "confidence": 0.6631321,
+          "speaker": "B"
+        }
+      ]
+    },
+    {
+      "speaker": "A",
+      "text": "Hello! I was just admiring the art. Haircut? But please. Such a lovely place you've got here. Is it usually this empty? Just a trim, please. Boris! Agent Kratos! Hello? Chief, you copy? I need backup.",
+      "confidence": 0.8322214,
+      "start": 43432,
+      "end": 153117,
+      "words": [
+        {
+          "text": "Hello!",
+          "start": 43432,
+          "end": 43858,
+          "confidence": 0.48812756,
+          "speaker": "A"
+        },
+        {
+          "text": "I",
+          "start": 44498,
+          "end": 44530,
+          "confidence": 0.9876796,
+          "speaker": "A"
+        },
+        {
+          "text": "was",
+          "start": 44563,
+          "end": 44678,
+          "confidence": 0.9976986,
+          "speaker": "A"
+        },
+        {
+          "text": "just",
+          "start": 44743,
+          "end": 45170,
+          "confidence": 0.998607,
+          "speaker": "A"
+        },
+        {
+          "text": "admiring",
+          "start": 45317,
+          "end": 45776,
+          "confidence": 0.9460732,
+          "speaker": "A"
+        },
+        {
+          "text": "the",
+          "start": 46038,
+          "end": 46219,
+          "confidence": 0.9941829,
+          "speaker": "A"
+        },
+        {
+          "text": "art.",
+          "start": 46284,
+          "end": 46547,
+          "confidence": 0.8823614,
+          "speaker": "A"
+        },
+        {
+          "text": "Haircut?",
+          "start": 55880,
+          "end": 56269,
+          "confidence": 0.7178882,
+          "speaker": "B"
+        },
+        {
+          "text": "But",
+          "start": 56318,
+          "end": 56545,
+          "confidence": 0.5181588,
+          "speaker": "A"
+        },
+        {
+          "text": "please.",
+          "start": 56545,
+          "end": 56935,
+          "confidence": 0.61269075,
+          "speaker": "A"
+        },
+        {
+          "text": "Such",
+          "start": 58590,
+          "end": 58801,
+          "confidence": 0.9559482,
+          "speaker": "A"
+        },
+        {
+          "text": "a",
+          "start": 58899,
+          "end": 59077,
+          "confidence": 0.9995086,
+          "speaker": "A"
+        },
+        {
+          "text": "lovely",
+          "start": 59077,
+          "end": 59451,
+          "confidence": 0.99984884,
+          "speaker": "A"
+        },
+        {
+          "text": "place",
+          "start": 59467,
+          "end": 59727,
+          "confidence": 0.99978024,
+          "speaker": "A"
+        },
+        {
+          "text": "you've",
+          "start": 59727,
+          "end": 59873,
+          "confidence": 0.983459,
+          "speaker": "A"
+        },
+        {
+          "text": "got",
+          "start": 59873,
+          "end": 60035,
+          "confidence": 0.99982774,
+          "speaker": "A"
+        },
+        {
+          "text": "here.",
+          "start": 60035,
+          "end": 60782,
+          "confidence": 0.9940992,
+          "speaker": "A"
+        },
+        {
+          "text": "Is",
+          "start": 61090,
+          "end": 61139,
+          "confidence": 0.9987607,
+          "speaker": "A"
+        },
+        {
+          "text": "it",
+          "start": 61188,
+          "end": 61334,
+          "confidence": 0.9997768,
+          "speaker": "A"
+        },
+        {
+          "text": "usually",
+          "start": 61334,
+          "end": 61642,
+          "confidence": 0.99995327,
+          "speaker": "A"
+        },
+        {
+          "text": "this",
+          "start": 61658,
+          "end": 61853,
+          "confidence": 0.9981711,
+          "speaker": "A"
+        },
+        {
+          "text": "empty?",
+          "start": 62470,
+          "end": 62730,
+          "confidence": 0.784882,
+          "speaker": "A"
+        },
+        {
+          "text": "Just",
+          "start": 86379,
+          "end": 86622,
+          "confidence": 0.77822596,
+          "speaker": "A"
+        },
+        {
+          "text": "a",
+          "start": 86622,
+          "end": 86638,
+          "confidence": 0.9550577,
+          "speaker": "A"
+        },
+        {
+          "text": "trim,",
+          "start": 86703,
+          "end": 86930,
+          "confidence": 0.83883935,
+          "speaker": "A"
+        },
+        {
+          "text": "please.",
+          "start": 86946,
+          "end": 87400,
+          "confidence": 0.89162546,
+          "speaker": "A"
+        },
+        {
+          "text": "Boris!",
+          "start": 87756,
+          "end": 88226,
+          "confidence": 0.45254332,
+          "speaker": "A"
+        },
+        {
+          "text": "Agent",
+          "start": 88389,
+          "end": 89231,
+          "confidence": 0.26592267,
+          "speaker": "B"
+        },
+        {
+          "text": "Kratos!",
+          "start": 89539,
+          "end": 90009,
+          "confidence": 0.8889431,
+          "speaker": "B"
+        },
+        {
+          "text": "Chief,",
+          "start": 161897,
+          "end": 162220,
+          "confidence": 0.6676218,
+          "speaker": "A"
+        },
+        {
+          "text": "you",
+          "start": 162314,
+          "end": 162444,
+          "confidence": 0.5300942,
+          "speaker": "A"
+        },
+        {
+          "text": "copy?",
+          "start": 162444,
+          "end": 162832,
+          "confidence": 0.9342173,
+          "speaker": "A"
+        },
+        {
+          "text": "I",
+          "start": 162832,
+          "end": 162848,
+          "confidence": 0.99878246,
+          "speaker": "A"
+        },
+        {
+          "text": "need",
+          "start": 162848,
+          "end": 162977,
+          "confidence": 0.9997663,
+          "speaker": "A"
+        },
+        {
+          "text": "backup.",
+          "start": 162977,
+          "end": 163365,
+          "confidence": 0.8765941,
+          "speaker": "A"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "What are you doing? No, I just wanted a haircut! Looks like we've found our next recruit. Doctor, carry on with the procedure. We have to make room for Agent 327.",
+      "confidence": 0.93032813,
+      "start": 164833,
+      "end": 184015,
+      "words": [
+        {
+          "text": "What",
+          "start": 164833,
+          "end": 164929,
+          "confidence": 0.7399443,
+          "speaker": "B"
+        },
+        {
+          "text": "are",
+          "start": 164929,
+          "end": 165026,
+          "confidence": 0.9666323,
+          "speaker": "B"
+        },
+        {
+          "text": "you",
+          "start": 165026,
+          "end": 165091,
+          "confidence": 0.988361,
+          "speaker": "B"
+        },
+        {
+          "text": "doing?",
+          "start": 165091,
+          "end": 165381,
+          "confidence": 0.80734587,
+          "speaker": "B"
+        },
+        {
+          "text": "No,",
+          "start": 165736,
+          "end": 165833,
+          "confidence": 0.65378237,
+          "speaker": "B"
+        },
+        {
+          "text": "I",
+          "start": 166059,
+          "end": 166204,
+          "confidence": 0.9878736,
+          "speaker": "B"
+        },
+        {
+          "text": "just",
+          "start": 166204,
+          "end": 166350,
+          "confidence": 0.89194185,
+          "speaker": "B"
+        },
+        {
+          "text": "wanted",
+          "start": 166366,
+          "end": 166592,
+          "confidence": 0.9368983,
+          "speaker": "B"
+        },
+        {
+          "text": "a",
+          "start": 166624,
+          "end": 166802,
+          "confidence": 0.9859984,
+          "speaker": "B"
+        },
+        {
+          "text": "haircut!",
+          "start": 166931,
+          "end": 172144,
+          "confidence": 0.8114031,
+          "speaker": "B"
+        },
+        {
+          "text": "Looks",
+          "start": 172757,
+          "end": 173080,
+          "confidence": 0.61013675,
+          "speaker": "B"
+        },
+        {
+          "text": "like",
+          "start": 173080,
+          "end": 173322,
+          "confidence": 0.9997135,
+          "speaker": "B"
+        },
+        {
+          "text": "we've",
+          "start": 173322,
+          "end": 173645,
+          "confidence": 0.90851897,
+          "speaker": "B"
+        },
+        {
+          "text": "found",
+          "start": 173645,
+          "end": 174194,
+          "confidence": 0.99957925,
+          "speaker": "B"
+        },
+        {
+          "text": "our",
+          "start": 174194,
+          "end": 174388,
+          "confidence": 0.9992618,
+          "speaker": "B"
+        },
+        {
+          "text": "next",
+          "start": 174388,
+          "end": 174857,
+          "confidence": 0.99926656,
+          "speaker": "B"
+        },
+        {
+          "text": "recruit.",
+          "start": 174857,
+          "end": 176230,
+          "confidence": 0.94335663,
+          "speaker": "B"
+        },
+        {
+          "text": "Doctor,",
+          "start": 176634,
+          "end": 177199,
+          "confidence": 0.94625956,
+          "speaker": "B"
+        },
+        {
+          "text": "carry",
+          "start": 177684,
+          "end": 177975,
+          "confidence": 0.9994336,
+          "speaker": "B"
+        },
+        {
+          "text": "on",
+          "start": 178007,
+          "end": 178250,
+          "confidence": 0.9995022,
+          "speaker": "B"
+        },
+        {
+          "text": "with",
+          "start": 178250,
+          "end": 178411,
+          "confidence": 0.9995427,
+          "speaker": "B"
+        },
+        {
+          "text": "the",
+          "start": 178411,
+          "end": 178492,
+          "confidence": 0.99771345,
+          "speaker": "B"
+        },
+        {
+          "text": "procedure.",
+          "start": 178492,
+          "end": 179364,
+          "confidence": 0.9574728,
+          "speaker": "B"
+        },
+        {
+          "text": "We",
+          "start": 180092,
+          "end": 180253,
+          "confidence": 0.9917429,
+          "speaker": "B"
+        },
+        {
+          "text": "have",
+          "start": 180269,
+          "end": 180479,
+          "confidence": 0.9990305,
+          "speaker": "B"
+        },
+        {
+          "text": "to",
+          "start": 180592,
+          "end": 180738,
+          "confidence": 0.9998882,
+          "speaker": "B"
+        },
+        {
+          "text": "make",
+          "start": 180738,
+          "end": 180980,
+          "confidence": 0.9996306,
+          "speaker": "B"
+        },
+        {
+          "text": "room",
+          "start": 180980,
+          "end": 181416,
+          "confidence": 0.99909353,
+          "speaker": "B"
+        },
+        {
+          "text": "for",
+          "start": 181530,
+          "end": 181679,
+          "confidence": 0.9803638,
+          "speaker": "B"
+        },
+        {
+          "text": "Agent",
+          "start": 181728,
+          "end": 182192,
+          "confidence": 0.8119971,
+          "speaker": "B"
+        },
+        {
+          "text": "327.",
+          "start": 182225,
+          "end": 184015,
+          "confidence": 0.92848706,
+          "speaker": "B"
+        }
+      ]
+    }
+  ],
+  "audio_duration": 232
+}

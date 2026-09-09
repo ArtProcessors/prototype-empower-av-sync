@@ -1,0 +1,77 @@
+/*
+ * The caption block under the listener's status.
+ *
+ * Sized in its own variables rather than in absolute lengths, because the
+ * height it reserves has to be arithmetic on the same numbers the text is set
+ * in — see `.transcript`. It is the only part of this view that changes
+ * several times a second, so everything here is deliberately still: no
+ * movement, no reflow, and one property animating.
+ */
+.transcript {
+  --line-size: 1.05rem;
+  --line-leading: 1.55;
+  /* Three rows: one for each of the two speakers `MAX_SPEAKER_ROWS` allows,
+     plus one for the wrap. Measured across the whole SOH transcript at 320
+     CSS pixels, where 64 of its 66 lines still fit on a single row and none
+     needs a third — so this holds every stack the limits in
+     `core/transcript.ts` can produce on a phone. Reserved whether or not
+     anything is being spoken: the block sits under the status ring, and a box
+     that grew and shrank with the speech would move it. */
+  --line-count: 3;
+
+  display: grid;
+  align-content: start;
+  inline-size: min(100%, 26rem);
+  min-block-size: calc(
+    var(--line-size) * var(--line-leading) * var(--line-count)
+  );
+}
+
+/* Rows sit directly under one another, with nothing between them but their own
+   leading — a second speaker is one line below the first, not a second block. */
+.line {
+  margin: 0;
+  /* The dimmer grey the rest of this view uses for asides is too far down for
+     a block of running text — it lands under 4.5:1 on the shell's near-black.
+     These are words someone is meant to read before they are spoken, not a
+     footnote, so they get the brighter of the two greys and the lit word
+     carries the contrast between them. */
+  color: var(--demo-dim);
+  font-size: var(--line-size);
+  line-height: var(--line-leading);
+  text-wrap: pretty;
+  animation: arrive 260ms ease-out;
+}
+
+/* The subtitle dash, shown only while two voices share the block. Held at the
+   dim grey whatever the words beside it are doing: it marks the row, so it
+   would be saying the wrong thing if it lit up with the speech. */
+.dash {
+  color: var(--demo-dimmer);
+}
+
+/* The whole line is on screen before it is spoken — dim, so it reads as
+   what is coming — and each word lifts to full strength as the voice reaches
+   it. Colour alone: a weight or size change would re-wrap the line under the
+   reader's eye. */
+.word {
+  transition: color 140ms linear;
+}
+.word[data-spoken] {
+  color: var(--colour-text);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line {
+    animation: none;
+  }
+  .word {
+    transition: none;
+  }
+}

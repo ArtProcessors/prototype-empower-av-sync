@@ -248,6 +248,15 @@
   outline: 2px solid var(--colour-info);
   outline-offset: 2px;
 }
+/* Switched on. A ghost button carries no state of its own, and this one is a
+   toggle — so it says which way it is set by lighting its own outline, rather
+   than by changing its label to the thing it is not. Before `.ghostUrgent`,
+   which must still win when a session is in trouble. */
+.ghostOn {
+  border-color: #55555c;
+  color: var(--colour-text);
+}
+
 /* Promoted once a problem has stopped looking transient. Applied alongside
    `.ghost`, so it has to come after it to win on source order. */
 .ghostUrgent {

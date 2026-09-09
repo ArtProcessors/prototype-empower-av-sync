@@ -77,7 +77,7 @@ as they are in production.
 | `yarn worker:dev` | Signalling + TURN Worker on :8787, proxied from Vite              |
 | `yarn build`      | Type-checks app + Worker + sims, then production build (incl. SW) |
 | `yarn preview`    | Prod build on :4273 (SW active — offline testing)                 |
-| `yarn sim`        | Unit checks: sync math and session policy                         |
+| `yarn sim`        | Unit checks: sync math, session policy, transcript model          |
 | `yarn format`     | Prettier over the repo (`format:check` to verify)                 |
 | `yarn deploy`     | Build, then deploy Worker + SPA to Cloudflare                     |
 
@@ -160,6 +160,17 @@ is switched on with (`/?video=soh&autostart=1`), so an installed screen needs
 nobody standing at it. With no `?video=`, it comes back on whatever it last led
 with. See [URL parameters](#url-parameters).
 
+**Live captions, off the same clock** ([transcript.ts](src/core/transcript.ts))
+— a follower can show the words as they are spoken, opt-in per device from the
+listener's footer. Nothing extra goes on the wire: the corrector already puts
+this device's audio on the screen's timeline to within a few milliseconds, so
+the local playhead is itself the cue. A word-timed transcript is cut into short
+lines, and the line on screen lights up word by word. One row per speaker: a
+voice coming in over another takes the row below rather than its place, both
+marked with the subtitle dash. Offered only for media that has one
+([src/content/transcripts/](src/content/transcripts/)); see
+[Content & adding your own](#content--adding-your-own).
+
 **PWA / offline** — the app shell and the `test` clip are precached, so they work
 fully offline after one load. Long-form content is **not** offline: its audio is
 range-fetched throughout playback.
@@ -173,17 +184,18 @@ Everything the URL can say is read once per page load, and frozen, in
 [launch-intent.ts](src/ui/launch-intent.ts) — deliberately not a router. Flags
 follow the `?debug=` reading: present and not `0`/`false` means on.
 
-| Parameter        | Effect                                                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `?debug=1`       | Raise the debug overlay over the normal views                                                                   |
-| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker                                  |
-| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                                    |
-| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                               |
-| `?rings=1`       | **Dev page:** gallery of every follower ring state ([DemoStatusGallery.tsx](src/ui/demo/DemoStatusGallery.tsx)) |
-| `?screens=1`     | **Dev page:** gallery of every screen state ([DemoScreenGallery.tsx](src/ui/demo/DemoScreenGallery.tsx))        |
-| `?runway=<sec>`  | Background free-run runway (default 180)                                                                        |
-| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                                            |
-| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                                            |
+| Parameter        | Effect                                                                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `?debug=1`       | Raise the debug overlay over the normal views                                                                                                  |
+| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker                                                                 |
+| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                                                                   |
+| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                                                              |
+| `?rings=1`       | **Dev page:** gallery of every follower ring state ([DemoStatusGallery.tsx](src/ui/demo/DemoStatusGallery.tsx))                                |
+| `?screens=1`     | **Dev page:** gallery of every screen state ([DemoScreenGallery.tsx](src/ui/demo/DemoScreenGallery.tsx))                                       |
+| `?captions=1`    | **Dev page:** captions played under the video itself, honouring `?video=` ([DemoTranscriptGallery.tsx](src/ui/demo/DemoTranscriptGallery.tsx)) |
+| `?runway=<sec>`  | Background free-run runway (default 180)                                                                                                       |
+| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                                                                           |
+| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                                                                           |
 
 **Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins even when
 blank (a listener's audio is not something a URL can unlock), then `?autostart=`
@@ -313,6 +325,35 @@ ffmpeg -i source.mp4 -c copy -movflags +faststart mine.mp4
 Keep the audio a stream-copy of the video's own track — that is what makes the
 two timelines bit-identical, with no encoder-delay offset to compensate for.
 
+### Captions for a video
+
+Drop the transcription pipeline's JSON into
+[src/content/transcripts/](src/content/transcripts/) and name it in that
+folder's `SOURCES` map under the same id the beat carries — two lines, no other
+change. `soh.json` is the shape it expects: utterances of `{ text, start, end }`
+words, in ms on the media's own timeline, each tagged with the `speaker` the
+pipeline diarised it to. Extra fields (confidences, the top-level `text`) are
+carried along and ignored, so the file goes in unedited; a file with no speaker
+labels simply never stacks a second row.
+
+Each file is a dynamic `import()`, so it lands in its own chunk, is fetched only
+when a listener switches captions on, and never loads on the screen at all. A
+video with no entry simply gets no toggle. Judge the line lengths, the reading
+pace and whether the words land on the right shot on `/?captions=1`, which
+plays the video itself with the captions under it and takes its clock from it —
+rather than by sitting through a session. It reads `?video=` like the screen
+does (`/?captions=1&video=soh`), defaulting to the first video that has words,
+and its **Two speakers** button jumps to the first hand-over close enough to
+stack two rows.
+
+```ts
+// src/content/transcripts/index.ts
+const SOURCES = {
+  soh: () => import('./soh.json'),
+  agent327: () => import('./agent-327.json'), // ← the whole change
+}
+```
+
 ## Deploy
 
 One Worker serves the built SPA, `/api/ice` and the `/signal` WebSocket, so
@@ -363,7 +404,7 @@ content from remote hosting.
 | `src/transport/`        | Trystero rooms, beats, clock RPC, ICE config, Worker signalling strategy                                                                                                               |
 | `src/media/`            | The follower's corrector and its three output engines                                                                                                                                  |
 | `src/diagnostics/`      | The session log and the monitors that feed it                                                                                                                                          |
-| `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it                                                                                                         |
+| `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it. `transcripts/` holds the word-timed files, lazily imported                                             |
 | `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the snapshot; `ui/demo/` is the views, `ui/debug/` the overlay                                                                               |
 | `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig                                                                                                          |
 | `worker/`               | Worker entry (`/api/ice`, `/api/ping`, SPA) and the `SignalRelay` Durable Object                                                                                                       |

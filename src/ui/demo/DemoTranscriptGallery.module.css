@@ -1,0 +1,82 @@
+/*
+ * The caption gallery's own layout, and nothing else.
+ *
+ * The block under test is a real `DemoTranscript`, so its type, its colours
+ * and the height it reserves come from `DemoTranscript.module.css`. This
+ * module only stacks the picture over it, holds the captions to the width the
+ * real view gives them, and puts the line controls underneath. It sits inside
+ * `.shell` from `demo.module.css` for the demo's greys.
+ */
+.page {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 32px;
+  padding: max(24px, env(safe-area-inset-top)) 20px 64px;
+}
+
+.intro {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.lede {
+  margin: 0;
+  max-inline-size: 40rem;
+  color: var(--demo-dim);
+  text-wrap: pretty;
+}
+
+/* Picture over words, the way the two are actually arranged: the screen across
+   the room and the phone in your hand. Wider than the caption column below it,
+   because the point of the picture is to be read against the words and a
+   26rem video is too small to see a cut in. */
+.stage {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  inline-size: min(100%, 34rem);
+  padding: 16px 12px 20px;
+  border: 1px solid #1c1c1e;
+  border-radius: 14px;
+  text-align: center;
+}
+
+/* Sized by its own aspect ratio rather than by the file's, so the box does not
+   change height when the metadata lands and drag the captions with it. */
+.video {
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #000;
+}
+
+/* The listener's own column, centred the way the view centres it. Its reserved
+   height is visible here even when nothing is being spoken — a caption block
+   that quietly collapsed in a gap would move the status ring above it in the
+   real view, and this is where that would show. */
+.captions {
+  display: grid;
+  justify-items: center;
+  inline-size: min(100%, 26rem);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.clock {
+  min-inline-size: 4rem;
+  color: var(--demo-dimmer);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+}

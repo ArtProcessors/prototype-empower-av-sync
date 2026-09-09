@@ -2,11 +2,15 @@ import { useEffect, useId, useState } from 'react'
 
 import { isRoomCodeAcceptable, maxRoomCodeLength } from '../../core/room-code'
 import type { SyncSessionState } from '../../core/session-state'
+import type { CorrectionMode } from '../../media/audio-sync-controller'
 import { classNames } from '../class-names'
 import type { ViewProps } from '../view-props'
 import styles from './demo.module.css'
 import { followerStatus } from './demo-status'
 import { DemoStatusDisplay } from './DemoStatusDisplay'
+import { DemoTranscript } from './DemoTranscript'
+import { readTranscriptPref, writeTranscriptPref } from './transcript-pref'
+import { transcriptExists, useTranscript } from './useTranscript'
 
 /**
  * How long a recoverable problem may persist before the refresh button is
@@ -40,6 +44,20 @@ function useStuckFor(troubled: boolean): boolean {
   }, [troubled])
 
   return stuck
+}
+
+/**
+ * Whether this device's audio is actually moving, and so has a position the
+ * words can be read off.
+ *
+ * `idle` and `syncing` both mean there is no soundtrack running yet — one
+ * before the first target arrives, the other while it is still being fetched —
+ * and the position they report is either stale or zero. Every other mode is
+ * the corrector steering audio that is playing, however hard it is having to
+ * work at it.
+ */
+function isPlaying(mode: CorrectionMode): boolean {
+  return mode === 'locked' || mode === 'nudge' || mode === 'seek'
 }
 
 /**
@@ -94,12 +112,26 @@ export function DemoFollowerView({
   onSetUpScreen,
 }: Props) {
   const [code, setCode] = useState(invitedRoom ?? '')
+  const [captions, setCaptions] = useState(readTranscriptPref)
   const hintId = useId()
   const hadContact = useScreenContact(state)
   const status = followerStatus(state, hadContact)
   const stuck = useStuckFor(status.recoverable)
   const started = state.phase !== 'landing'
   const roomCode = state.transport?.roomCode ?? null
+
+  // What the screen says it is playing, which is what decides whether there
+  // are words to offer at all — not what this device once chose, and not the
+  // catalogue's default.
+  const mediaId = state.transport?.latestBeat?.mediaId ?? null
+  const transcript = useTranscript(mediaId, captions)
+
+  const toggleCaptions = () => {
+    const next = !captions
+
+    setCaptions(next)
+    writeTranscriptPref(next)
+  }
 
   const display = (
     <DemoStatusDisplay status={status} waveform={session.waveform} />
@@ -134,6 +166,20 @@ export function DemoFollowerView({
         )}
 
         <div className={styles.below}>
+          {/* Under the status, so the sentence saying whether this is working
+              still comes first: the words are the thing you settle into once
+              you know the audio is good. */}
+          {captions && transcript && (
+            <DemoTranscript
+              transcript={transcript}
+              timeMs={
+                isPlaying(state.correction.mode)
+                  ? state.localTime * 1000
+                  : null
+              }
+            />
+          )}
+
           {!started && (
             <p className={styles.hint} id={hintId}>
               Put your headphones on, then tap to start.
@@ -174,6 +220,19 @@ export function DemoFollowerView({
         >
           Refresh
         </button>
+
+        {/* Offered only where there is something to show. A switch that
+            silently does nothing on the videos with no transcript would be
+            worse than not having one. */}
+        {started && transcriptExists(mediaId) && (
+          <button
+            className={classNames(styles.ghost, captions && styles.ghostOn)}
+            aria-pressed={captions}
+            onClick={toggleCaptions}
+          >
+            Transcript
+          </button>
+        )}
 
         {started && (
           <button className={styles.ghost} onClick={() => session.leave()}>

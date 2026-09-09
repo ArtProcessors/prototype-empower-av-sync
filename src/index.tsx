@@ -7,6 +7,7 @@ import './global.css'
 import { App } from './ui/App'
 import { DemoScreenGallery } from './ui/demo/DemoScreenGallery'
 import { DemoStatusGallery } from './ui/demo/DemoStatusGallery'
+import { DemoTranscriptGallery } from './ui/demo/DemoTranscriptGallery'
 import { currentLaunchIntent } from './ui/launch-intent'
 
 // Service worker registration is production-only; use
@@ -18,10 +19,10 @@ if (import.meta.env.PROD) {
 }
 
 /**
- * What this page load is: the app, or one of the two development galleries.
+ * What this page load is: the app, or one of the three development galleries.
  *
- * The galleries are routed here rather than inside `App` because neither is a
- * host: `App` binds a session on its first render, and building one — with the
+ * The galleries are routed here rather than inside `App` because none of them
+ * is a host: `App` binds a session on its first render, and building one — with the
  * screen's `<video>` element and everything it drags in — for a page of states
  * that never joins a room would be waste with side effects.
  */
@@ -34,6 +35,10 @@ function pageForLaunch(): ReactElement {
 
   if (intent.screens) {
     return <DemoScreenGallery />
+  }
+
+  if (intent.captions) {
+    return <DemoTranscriptGallery />
   }
 
   return <App />

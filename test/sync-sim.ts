@@ -367,6 +367,7 @@ console.log('\n[11] roomToJoin (screen or listener, decided in one place)')
     autostart: false,
     rings: false,
     screens: false,
+    captions: false,
     ...over,
   })
 

@@ -45,6 +45,15 @@ export const RINGS_QUERY_PARAM = 'rings'
  */
 export const SCREENS_QUERY_PARAM = 'screens'
 
+/**
+ * Query parameter opening the caption gallery instead of the app, e.g.
+ * `?captions=1`. A development page like the two above: it plays a real
+ * transcript against a clock of its own, so line lengths and reading pace can
+ * be judged without holding a fifteen-minute session open — see
+ * `ui/demo/DemoTranscriptGallery.tsx`.
+ */
+export const CAPTIONS_QUERY_PARAM = 'captions'
+
 /** What the page's URL asks this device to be. */
 export interface LaunchIntent {
   /** Which UI to render. */
@@ -75,6 +84,11 @@ export interface LaunchIntent {
    * the demo; `?rings=` wins if a URL somehow asks for both.
    */
   screens: boolean
+  /**
+   * Whether to open the caption gallery rather than a session. The third page
+   * of the same kind, and last in the same precedence.
+   */
+  captions: boolean
 }
 
 /**
@@ -103,6 +117,7 @@ export function launchIntentFromSearch(search: string): LaunchIntent {
     autostart: flagFromParams(params, AUTOSTART_QUERY_PARAM),
     rings: flagFromParams(params, RINGS_QUERY_PARAM),
     screens: flagFromParams(params, SCREENS_QUERY_PARAM),
+    captions: flagFromParams(params, CAPTIONS_QUERY_PARAM),
   }
 }
 

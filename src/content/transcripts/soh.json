@@ -1,0 +1,2389 @@
+{
+  "status": "completed",
+  "text": "Pump it up a little more, get the party going on the dance floor. See, 'cause that's where the party's at, and you'll find out if you do that. I want a place to stay. Get your booty on the floor tonight. Make my— My mind, people think I'm insane because I am brown in your website. That boy needs therapy. Purely psychosomatic. That boy needs therapy. Lie down on the couch. What does that mean? You're a nut! You're crazy in the coconut! What does that mean? That boy needs therapy. I'm gonna kill you. That boy needs therapy. Granny Gazoo, let's have it, you! Now when I count 3. That boy needs therapy. He was white as a sheet. And he also made false teeth. Oh, I've been so down and under pressure. I'm way too fine to be this stressed, yeah. Oh, I'm not the girl I was or used to be. Way straight on, howlin'! Screech your brakes and lamp light blinkin'! Let's entertain! Let's— I have been cheated by you since I drove over Beautiful. Some even more beautiful. Rockin', rockin' and rollin' down to the beach I'm strollin'. But the seagulls poking my head, not fun. I said seagulls, mm, stop it now. Father wears his Sunday best. Mother's tired, she needs a rest. The kids are playing up downstairs. Glitter in the sky, glitter in my eyes, shining slowly. Mommy, Daddy, look at me. I went to school and I got a degree. All my friends call it the big D. I went to school and I got the big D. I got the big D. I got the big D. I got the big D. I went to school and I got the big D. Is your muffin buttered? Would you like us to assign someone to butter your muffin? Excuse me. What? Excuse me. What? For you know time is nigh. When I must prove your ways, then you will understand.",
+  "utterances": [
+    {
+      "speaker": "A",
+      "text": "Pump it up a little more, get the party going on the dance floor. See, 'cause that's where the party's at, and you'll find out if you do that. I want a place to stay. Get your booty on the floor tonight. Make my— My mind, people think I'm insane because I am brown in your website.",
+      "confidence": 0.87671804,
+      "start": 32241,
+      "end": 70620,
+      "words": [
+        {
+          "text": "Pump",
+          "start": 32241,
+          "end": 32647,
+          "confidence": 0.82263064,
+          "speaker": "A"
+        },
+        {
+          "text": "it",
+          "start": 32647,
+          "end": 32890,
+          "confidence": 0.9983523,
+          "speaker": "A"
+        },
+        {
+          "text": "up",
+          "start": 32890,
+          "end": 33150,
+          "confidence": 0.9991868,
+          "speaker": "A"
+        },
+        {
+          "text": "a",
+          "start": 33231,
+          "end": 33248,
+          "confidence": 0.97611916,
+          "speaker": "A"
+        },
+        {
+          "text": "little",
+          "start": 33313,
+          "end": 33670,
+          "confidence": 0.995381,
+          "speaker": "A"
+        },
+        {
+          "text": "more,",
+          "start": 33702,
+          "end": 33816,
+          "confidence": 0.80635005,
+          "speaker": "A"
+        },
+        {
+          "text": "get",
+          "start": 33946,
+          "end": 34125,
+          "confidence": 0.999062,
+          "speaker": "A"
+        },
+        {
+          "text": "the",
+          "start": 34125,
+          "end": 34206,
+          "confidence": 0.99846894,
+          "speaker": "A"
+        },
+        {
+          "text": "party",
+          "start": 34287,
+          "end": 34677,
+          "confidence": 0.99977666,
+          "speaker": "A"
+        },
+        {
+          "text": "going",
+          "start": 34758,
+          "end": 34986,
+          "confidence": 0.9113043,
+          "speaker": "A"
+        },
+        {
+          "text": "on",
+          "start": 35018,
+          "end": 35099,
+          "confidence": 0.9806624,
+          "speaker": "A"
+        },
+        {
+          "text": "the",
+          "start": 35099,
+          "end": 35262,
+          "confidence": 0.9991061,
+          "speaker": "A"
+        },
+        {
+          "text": "dance",
+          "start": 35262,
+          "end": 35651,
+          "confidence": 0.99930847,
+          "speaker": "A"
+        },
+        {
+          "text": "floor.",
+          "start": 35651,
+          "end": 35879,
+          "confidence": 0.8696977,
+          "speaker": "A"
+        },
+        {
+          "text": "See,",
+          "start": 36220,
+          "end": 36317,
+          "confidence": 0.9303082,
+          "speaker": "A"
+        },
+        {
+          "text": "'cause",
+          "start": 36399,
+          "end": 36529,
+          "confidence": 0.6874358,
+          "speaker": "A"
+        },
+        {
+          "text": "that's",
+          "start": 36626,
+          "end": 36870,
+          "confidence": 0.9990625,
+          "speaker": "A"
+        },
+        {
+          "text": "where",
+          "start": 36870,
+          "end": 37048,
+          "confidence": 0.9995524,
+          "speaker": "A"
+        },
+        {
+          "text": "the",
+          "start": 37048,
+          "end": 37211,
+          "confidence": 0.9989766,
+          "speaker": "A"
+        },
+        {
+          "text": "party's",
+          "start": 37211,
+          "end": 37682,
+          "confidence": 0.99221134,
+          "speaker": "A"
+        },
+        {
+          "text": "at,",
+          "start": 37682,
+          "end": 37828,
+          "confidence": 0.8225368,
+          "speaker": "A"
+        },
+        {
+          "text": "and",
+          "start": 37925,
+          "end": 38072,
+          "confidence": 0.99405706,
+          "speaker": "A"
+        },
+        {
+          "text": "you'll",
+          "start": 38088,
+          "end": 38234,
+          "confidence": 0.7647187,
+          "speaker": "A"
+        },
+        {
+          "text": "find",
+          "start": 38250,
+          "end": 38656,
+          "confidence": 0.99983716,
+          "speaker": "A"
+        },
+        {
+          "text": "out",
+          "start": 38656,
+          "end": 38835,
+          "confidence": 0.9926254,
+          "speaker": "A"
+        },
+        {
+          "text": "if",
+          "start": 38835,
+          "end": 39225,
+          "confidence": 0.993707,
+          "speaker": "A"
+        },
+        {
+          "text": "you",
+          "start": 39225,
+          "end": 39306,
+          "confidence": 0.9989281,
+          "speaker": "A"
+        },
+        {
+          "text": "do",
+          "start": 39306,
+          "end": 39355,
+          "confidence": 0.99473816,
+          "speaker": "A"
+        },
+        {
+          "text": "that.",
+          "start": 39468,
+          "end": 39745,
+          "confidence": 0.97659516,
+          "speaker": "A"
+        },
+        {
+          "text": "I",
+          "start": 40592,
+          "end": 40705,
+          "confidence": 0.34241092,
+          "speaker": "A"
+        },
+        {
+          "text": "want",
+          "start": 40997,
+          "end": 42294,
+          "confidence": 0.6735715,
+          "speaker": "A"
+        },
+        {
+          "text": "a",
+          "start": 42294,
+          "end": 42359,
+          "confidence": 0.9750719,
+          "speaker": "A"
+        },
+        {
+          "text": "place",
+          "start": 42359,
+          "end": 42894,
+          "confidence": 0.99737155,
+          "speaker": "A"
+        },
+        {
+          "text": "to",
+          "start": 42894,
+          "end": 43202,
+          "confidence": 0.9977471,
+          "speaker": "A"
+        },
+        {
+          "text": "stay.",
+          "start": 43202,
+          "end": 43591,
+          "confidence": 0.7345991,
+          "speaker": "A"
+        },
+        {
+          "text": "Get",
+          "start": 43915,
+          "end": 44304,
+          "confidence": 0.9838368,
+          "speaker": "A"
+        },
+        {
+          "text": "your",
+          "start": 44304,
+          "end": 44369,
+          "confidence": 0.98809475,
+          "speaker": "A"
+        },
+        {
+          "text": "booty",
+          "start": 44402,
+          "end": 44856,
+          "confidence": 0.9991529,
+          "speaker": "A"
+        },
+        {
+          "text": "on",
+          "start": 44969,
+          "end": 45212,
+          "confidence": 0.99900013,
+          "speaker": "A"
+        },
+        {
+          "text": "the",
+          "start": 45212,
+          "end": 45293,
+          "confidence": 0.99837756,
+          "speaker": "A"
+        },
+        {
+          "text": "floor",
+          "start": 45293,
+          "end": 45618,
+          "confidence": 0.99686277,
+          "speaker": "A"
+        },
+        {
+          "text": "tonight.",
+          "start": 45618,
+          "end": 46428,
+          "confidence": 0.9207812,
+          "speaker": "A"
+        },
+        {
+          "text": "Make",
+          "start": 46590,
+          "end": 47255,
+          "confidence": 0.6375759,
+          "speaker": "A"
+        },
+        {
+          "text": "my—",
+          "start": 47255,
+          "end": 47275,
+          "confidence": 0.51515007,
+          "speaker": "A"
+        },
+        {
+          "text": "My",
+          "start": 63800,
+          "end": 64107,
+          "confidence": 0.20564438,
+          "speaker": "A"
+        },
+        {
+          "text": "mind,",
+          "start": 64221,
+          "end": 64690,
+          "confidence": 0.50773174,
+          "speaker": "A"
+        },
+        {
+          "text": "people",
+          "start": 64950,
+          "end": 65274,
+          "confidence": 0.98951507,
+          "speaker": "A"
+        },
+        {
+          "text": "think",
+          "start": 65274,
+          "end": 65436,
+          "confidence": 0.99536467,
+          "speaker": "A"
+        },
+        {
+          "text": "I'm",
+          "start": 66165,
+          "end": 66505,
+          "confidence": 0.81467605,
+          "speaker": "A"
+        },
+        {
+          "text": "insane",
+          "start": 66505,
+          "end": 67023,
+          "confidence": 0.99818414,
+          "speaker": "A"
+        },
+        {
+          "text": "because",
+          "start": 67072,
+          "end": 67930,
+          "confidence": 0.9540777,
+          "speaker": "A"
+        },
+        {
+          "text": "I",
+          "start": 68044,
+          "end": 68157,
+          "confidence": 0.9968172,
+          "speaker": "A"
+        },
+        {
+          "text": "am",
+          "start": 68514,
+          "end": 68659,
+          "confidence": 0.9753293,
+          "speaker": "A"
+        },
+        {
+          "text": "brown",
+          "start": 68757,
+          "end": 68983,
+          "confidence": 0.40729126,
+          "speaker": "A"
+        },
+        {
+          "text": "in",
+          "start": 69097,
+          "end": 69146,
+          "confidence": 0.38096634,
+          "speaker": "A"
+        },
+        {
+          "text": "your",
+          "start": 69502,
+          "end": 69907,
+          "confidence": 0.93763757,
+          "speaker": "A"
+        },
+        {
+          "text": "website.",
+          "start": 69907,
+          "end": 70620,
+          "confidence": 0.54939026,
+          "speaker": "A"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "That boy needs therapy. Purely psychosomatic. That boy needs therapy. Lie down on the couch. What does that mean? You're a nut! You're crazy in the coconut! What does that mean? That boy needs therapy. I'm gonna kill you. That boy needs therapy. Granny Gazoo, let's have it, you! Now when I count 3. That boy needs therapy. He was white as a sheet. And he also made false teeth.",
+      "confidence": 0.9142781,
+      "start": 185326,
+      "end": 210549,
+      "words": [
+        {
+          "text": "That",
+          "start": 185326,
+          "end": 185566,
+          "confidence": 0.8973066,
+          "speaker": "B"
+        },
+        {
+          "text": "boy",
+          "start": 185582,
+          "end": 185694,
+          "confidence": 0.99624854,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 185838,
+          "end": 186111,
+          "confidence": 0.9983317,
+          "speaker": "B"
+        },
+        {
+          "text": "therapy.",
+          "start": 186207,
+          "end": 186495,
+          "confidence": 0.9301894,
+          "speaker": "B"
+        },
+        {
+          "text": "Purely",
+          "start": 186544,
+          "end": 186848,
+          "confidence": 0.63298386,
+          "speaker": "B"
+        },
+        {
+          "text": "psychosomatic.",
+          "start": 186848,
+          "end": 187665,
+          "confidence": 0.9862217,
+          "speaker": "B"
+        },
+        {
+          "text": "That",
+          "start": 187745,
+          "end": 187858,
+          "confidence": 0.9956911,
+          "speaker": "B"
+        },
+        {
+          "text": "boy",
+          "start": 187986,
+          "end": 188178,
+          "confidence": 0.99907136,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 188242,
+          "end": 188595,
+          "confidence": 0.9994512,
+          "speaker": "B"
+        },
+        {
+          "text": "therapy.",
+          "start": 188611,
+          "end": 188963,
+          "confidence": 0.9852559,
+          "speaker": "B"
+        },
+        {
+          "text": "Lie",
+          "start": 189011,
+          "end": 189140,
+          "confidence": 0.7648056,
+          "speaker": "B"
+        },
+        {
+          "text": "down",
+          "start": 189252,
+          "end": 189428,
+          "confidence": 0.99833506,
+          "speaker": "B"
+        },
+        {
+          "text": "on",
+          "start": 189428,
+          "end": 189508,
+          "confidence": 0.9995326,
+          "speaker": "B"
+        },
+        {
+          "text": "the",
+          "start": 189508,
+          "end": 189652,
+          "confidence": 0.99963343,
+          "speaker": "B"
+        },
+        {
+          "text": "couch.",
+          "start": 189652,
+          "end": 190037,
+          "confidence": 0.943096,
+          "speaker": "B"
+        },
+        {
+          "text": "What",
+          "start": 190534,
+          "end": 190630,
+          "confidence": 0.9273818,
+          "speaker": "B"
+        },
+        {
+          "text": "does",
+          "start": 190630,
+          "end": 190758,
+          "confidence": 0.9981335,
+          "speaker": "B"
+        },
+        {
+          "text": "that",
+          "start": 190774,
+          "end": 190967,
+          "confidence": 0.9993093,
+          "speaker": "B"
+        },
+        {
+          "text": "mean?",
+          "start": 191031,
+          "end": 191239,
+          "confidence": 0.98857194,
+          "speaker": "B"
+        },
+        {
+          "text": "You're",
+          "start": 191351,
+          "end": 191495,
+          "confidence": 0.9954027,
+          "speaker": "B"
+        },
+        {
+          "text": "a",
+          "start": 191576,
+          "end": 191592,
+          "confidence": 0.9350334,
+          "speaker": "B"
+        },
+        {
+          "text": "nut!",
+          "start": 191592,
+          "end": 192088,
+          "confidence": 0.7142149,
+          "speaker": "B"
+        },
+        {
+          "text": "You're",
+          "start": 192633,
+          "end": 192858,
+          "confidence": 0.99113786,
+          "speaker": "B"
+        },
+        {
+          "text": "crazy",
+          "start": 192858,
+          "end": 193258,
+          "confidence": 0.989754,
+          "speaker": "B"
+        },
+        {
+          "text": "in",
+          "start": 193258,
+          "end": 193322,
+          "confidence": 0.9936959,
+          "speaker": "B"
+        },
+        {
+          "text": "the",
+          "start": 193338,
+          "end": 193370,
+          "confidence": 0.9952677,
+          "speaker": "B"
+        },
+        {
+          "text": "coconut!",
+          "start": 193499,
+          "end": 193963,
+          "confidence": 0.9234311,
+          "speaker": "B"
+        },
+        {
+          "text": "What",
+          "start": 194075,
+          "end": 194188,
+          "confidence": 0.9985258,
+          "speaker": "B"
+        },
+        {
+          "text": "does",
+          "start": 194188,
+          "end": 194316,
+          "confidence": 0.9991259,
+          "speaker": "B"
+        },
+        {
+          "text": "that",
+          "start": 194316,
+          "end": 194652,
+          "confidence": 0.9995023,
+          "speaker": "B"
+        },
+        {
+          "text": "mean?",
+          "start": 194716,
+          "end": 194973,
+          "confidence": 0.9927815,
+          "speaker": "B"
+        },
+        {
+          "text": "That",
+          "start": 195101,
+          "end": 195245,
+          "confidence": 0.9974475,
+          "speaker": "B"
+        },
+        {
+          "text": "boy",
+          "start": 195341,
+          "end": 195470,
+          "confidence": 0.9998066,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 195598,
+          "end": 195886,
+          "confidence": 0.9997662,
+          "speaker": "B"
+        },
+        {
+          "text": "therapy.",
+          "start": 195918,
+          "end": 196415,
+          "confidence": 0.94293606,
+          "speaker": "B"
+        },
+        {
+          "text": "I'm",
+          "start": 196479,
+          "end": 196607,
+          "confidence": 0.9364109,
+          "speaker": "B"
+        },
+        {
+          "text": "gonna",
+          "start": 196640,
+          "end": 196880,
+          "confidence": 0.92636436,
+          "speaker": "B"
+        },
+        {
+          "text": "kill",
+          "start": 196880,
+          "end": 197345,
+          "confidence": 0.99962187,
+          "speaker": "B"
+        },
+        {
+          "text": "you.",
+          "start": 197345,
+          "end": 197377,
+          "confidence": 0.8207473,
+          "speaker": "B"
+        },
+        {
+          "text": "That",
+          "start": 197441,
+          "end": 197713,
+          "confidence": 0.99395704,
+          "speaker": "B"
+        },
+        {
+          "text": "boy",
+          "start": 197745,
+          "end": 197873,
+          "confidence": 0.999798,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 197938,
+          "end": 198290,
+          "confidence": 0.9996793,
+          "speaker": "B"
+        },
+        {
+          "text": "therapy.",
+          "start": 198322,
+          "end": 198819,
+          "confidence": 0.99381965,
+          "speaker": "B"
+        },
+        {
+          "text": "Granny",
+          "start": 198963,
+          "end": 199220,
+          "confidence": 0.6230491,
+          "speaker": "B"
+        },
+        {
+          "text": "Gazoo,",
+          "start": 199268,
+          "end": 199636,
+          "confidence": 0.91236,
+          "speaker": "B"
+        },
+        {
+          "text": "let's",
+          "start": 199845,
+          "end": 200085,
+          "confidence": 0.99137044,
+          "speaker": "B"
+        },
+        {
+          "text": "have",
+          "start": 200085,
+          "end": 200405,
+          "confidence": 0.99951017,
+          "speaker": "B"
+        },
+        {
+          "text": "it,",
+          "start": 200405,
+          "end": 200582,
+          "confidence": 0.6823338,
+          "speaker": "B"
+        },
+        {
+          "text": "you!",
+          "start": 200630,
+          "end": 200774,
+          "confidence": 0.6857717,
+          "speaker": "B"
+        },
+        {
+          "text": "Now",
+          "start": 201223,
+          "end": 201639,
+          "confidence": 0.5205812,
+          "speaker": "B"
+        },
+        {
+          "text": "when",
+          "start": 202569,
+          "end": 202777,
+          "confidence": 0.7172625,
+          "speaker": "B"
+        },
+        {
+          "text": "I",
+          "start": 203274,
+          "end": 203290,
+          "confidence": 0.99974114,
+          "speaker": "B"
+        },
+        {
+          "text": "count",
+          "start": 203514,
+          "end": 204268,
+          "confidence": 0.9998814,
+          "speaker": "B"
+        },
+        {
+          "text": "3.",
+          "start": 204316,
+          "end": 204636,
+          "confidence": 0.59205794,
+          "speaker": "B"
+        },
+        {
+          "text": "That",
+          "start": 204732,
+          "end": 205037,
+          "confidence": 0.65356517,
+          "speaker": "B"
+        },
+        {
+          "text": "boy",
+          "start": 205037,
+          "end": 205165,
+          "confidence": 0.50149316,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 205309,
+          "end": 205582,
+          "confidence": 0.8246396,
+          "speaker": "B"
+        },
+        {
+          "text": "therapy.",
+          "start": 205614,
+          "end": 206143,
+          "confidence": 0.9765772,
+          "speaker": "B"
+        },
+        {
+          "text": "He",
+          "start": 206255,
+          "end": 207280,
+          "confidence": 0.9786083,
+          "speaker": "B"
+        },
+        {
+          "text": "was",
+          "start": 207360,
+          "end": 207505,
+          "confidence": 0.93508154,
+          "speaker": "B"
+        },
+        {
+          "text": "white",
+          "start": 207617,
+          "end": 207793,
+          "confidence": 0.99530005,
+          "speaker": "B"
+        },
+        {
+          "text": "as",
+          "start": 207857,
+          "end": 207905,
+          "confidence": 0.99961406,
+          "speaker": "B"
+        },
+        {
+          "text": "a",
+          "start": 208001,
+          "end": 208017,
+          "confidence": 0.99812084,
+          "speaker": "B"
+        },
+        {
+          "text": "sheet.",
+          "start": 208017,
+          "end": 208578,
+          "confidence": 0.7323601,
+          "speaker": "B"
+        },
+        {
+          "text": "And",
+          "start": 209043,
+          "end": 209139,
+          "confidence": 0.5280968,
+          "speaker": "B"
+        },
+        {
+          "text": "he",
+          "start": 209139,
+          "end": 209284,
+          "confidence": 0.99422824,
+          "speaker": "B"
+        },
+        {
+          "text": "also",
+          "start": 209364,
+          "end": 209700,
+          "confidence": 0.9997017,
+          "speaker": "B"
+        },
+        {
+          "text": "made",
+          "start": 209700,
+          "end": 209941,
+          "confidence": 0.99670225,
+          "speaker": "B"
+        },
+        {
+          "text": "false",
+          "start": 209941,
+          "end": 210341,
+          "confidence": 0.998689,
+          "speaker": "B"
+        },
+        {
+          "text": "teeth.",
+          "start": 210341,
+          "end": 210549,
+          "confidence": 0.98498905,
+          "speaker": "B"
+        }
+      ]
+    },
+    {
+      "speaker": "C",
+      "text": "Oh, I've been so down and under pressure. I'm way too fine to be this stressed, yeah. Oh, I'm not the girl I was or used to be.",
+      "confidence": 0.9451558,
+      "start": 250056,
+      "end": 262020,
+      "words": [
+        {
+          "text": "Oh,",
+          "start": 250056,
+          "end": 250222,
+          "confidence": 0.69240284,
+          "speaker": "C"
+        },
+        {
+          "text": "I've",
+          "start": 250238,
+          "end": 250568,
+          "confidence": 0.957685,
+          "speaker": "C"
+        },
+        {
+          "text": "been",
+          "start": 250568,
+          "end": 250882,
+          "confidence": 0.9992706,
+          "speaker": "C"
+        },
+        {
+          "text": "so",
+          "start": 250882,
+          "end": 250981,
+          "confidence": 0.9946583,
+          "speaker": "C"
+        },
+        {
+          "text": "down",
+          "start": 250981,
+          "end": 251476,
+          "confidence": 0.9976835,
+          "speaker": "C"
+        },
+        {
+          "text": "and",
+          "start": 251476,
+          "end": 251608,
+          "confidence": 0.9851248,
+          "speaker": "C"
+        },
+        {
+          "text": "under",
+          "start": 251790,
+          "end": 252038,
+          "confidence": 0.9991229,
+          "speaker": "C"
+        },
+        {
+          "text": "pressure.",
+          "start": 252038,
+          "end": 252483,
+          "confidence": 0.95679367,
+          "speaker": "C"
+        },
+        {
+          "text": "I'm",
+          "start": 254815,
+          "end": 255203,
+          "confidence": 0.99649733,
+          "speaker": "C"
+        },
+        {
+          "text": "way",
+          "start": 255203,
+          "end": 255316,
+          "confidence": 0.9983216,
+          "speaker": "C"
+        },
+        {
+          "text": "too",
+          "start": 255316,
+          "end": 255510,
+          "confidence": 0.99827874,
+          "speaker": "C"
+        },
+        {
+          "text": "fine",
+          "start": 255526,
+          "end": 255881,
+          "confidence": 0.9878439,
+          "speaker": "C"
+        },
+        {
+          "text": "to",
+          "start": 255881,
+          "end": 256027,
+          "confidence": 0.99503386,
+          "speaker": "C"
+        },
+        {
+          "text": "be",
+          "start": 256027,
+          "end": 256285,
+          "confidence": 0.9995152,
+          "speaker": "C"
+        },
+        {
+          "text": "this",
+          "start": 256334,
+          "end": 256576,
+          "confidence": 0.49332693,
+          "speaker": "C"
+        },
+        {
+          "text": "stressed,",
+          "start": 256576,
+          "end": 257044,
+          "confidence": 0.71646655,
+          "speaker": "C"
+        },
+        {
+          "text": "yeah.",
+          "start": 257061,
+          "end": 257416,
+          "confidence": 0.9364734,
+          "speaker": "C"
+        },
+        {
+          "text": "Oh,",
+          "start": 258838,
+          "end": 258918,
+          "confidence": 0.9815717,
+          "speaker": "C"
+        },
+        {
+          "text": "I'm",
+          "start": 259096,
+          "end": 259613,
+          "confidence": 0.9934453,
+          "speaker": "C"
+        },
+        {
+          "text": "not",
+          "start": 259662,
+          "end": 259823,
+          "confidence": 0.9993494,
+          "speaker": "C"
+        },
+        {
+          "text": "the",
+          "start": 259823,
+          "end": 259904,
+          "confidence": 0.9980026,
+          "speaker": "C"
+        },
+        {
+          "text": "girl",
+          "start": 259968,
+          "end": 260114,
+          "confidence": 0.9997552,
+          "speaker": "C"
+        },
+        {
+          "text": "I",
+          "start": 260227,
+          "end": 260405,
+          "confidence": 0.99714714,
+          "speaker": "C"
+        },
+        {
+          "text": "was",
+          "start": 260469,
+          "end": 260857,
+          "confidence": 0.9983359,
+          "speaker": "C"
+        },
+        {
+          "text": "or",
+          "start": 260857,
+          "end": 260954,
+          "confidence": 0.81477016,
+          "speaker": "C"
+        },
+        {
+          "text": "used",
+          "start": 261035,
+          "end": 261245,
+          "confidence": 0.9978175,
+          "speaker": "C"
+        },
+        {
+          "text": "to",
+          "start": 261358,
+          "end": 261600,
+          "confidence": 0.9993625,
+          "speaker": "C"
+        },
+        {
+          "text": "be.",
+          "start": 261762,
+          "end": 262020,
+          "confidence": 0.9803055,
+          "speaker": "C"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "Way straight on, howlin'! Screech your brakes and lamp light blinkin'! Let's entertain! Let's— I have been cheated by you since I drove over Beautiful. Some even more beautiful.",
+      "confidence": 0.73387605,
+      "start": 331860,
+      "end": 399620,
+      "words": [
+        {
+          "text": "Way",
+          "start": 331860,
+          "end": 332004,
+          "confidence": 0.22424601,
+          "speaker": "B"
+        },
+        {
+          "text": "straight",
+          "start": 332230,
+          "end": 333019,
+          "confidence": 0.53311515,
+          "speaker": "B"
+        },
+        {
+          "text": "on,",
+          "start": 333019,
+          "end": 333228,
+          "confidence": 0.6868217,
+          "speaker": "B"
+        },
+        {
+          "text": "howlin'!",
+          "start": 333324,
+          "end": 334049,
+          "confidence": 0.49601454,
+          "speaker": "B"
+        },
+        {
+          "text": "Screech",
+          "start": 334146,
+          "end": 334999,
+          "confidence": 0.5665143,
+          "speaker": "B"
+        },
+        {
+          "text": "your",
+          "start": 335031,
+          "end": 335240,
+          "confidence": 0.9608115,
+          "speaker": "B"
+        },
+        {
+          "text": "brakes",
+          "start": 335256,
+          "end": 335611,
+          "confidence": 0.9819983,
+          "speaker": "B"
+        },
+        {
+          "text": "and",
+          "start": 335981,
+          "end": 336206,
+          "confidence": 0.9130021,
+          "speaker": "B"
+        },
+        {
+          "text": "lamp",
+          "start": 336238,
+          "end": 336802,
+          "confidence": 0.84219116,
+          "speaker": "B"
+        },
+        {
+          "text": "light",
+          "start": 336802,
+          "end": 337043,
+          "confidence": 0.5357726,
+          "speaker": "B"
+        },
+        {
+          "text": "blinkin'!",
+          "start": 337043,
+          "end": 337349,
+          "confidence": 0.84807307,
+          "speaker": "B"
+        },
+        {
+          "text": "Let's",
+          "start": 337687,
+          "end": 338347,
+          "confidence": 0.7319528,
+          "speaker": "B"
+        },
+        {
+          "text": "entertain!",
+          "start": 340730,
+          "end": 341990,
+          "confidence": 0.34869877,
+          "speaker": "B"
+        },
+        {
+          "text": "Let's—",
+          "start": 342151,
+          "end": 345270,
+          "confidence": 0.6031566,
+          "speaker": "B"
+        },
+        {
+          "text": "I",
+          "start": 351832,
+          "end": 351848,
+          "confidence": 0.41313538,
+          "speaker": "B"
+        },
+        {
+          "text": "have",
+          "start": 354261,
+          "end": 354407,
+          "confidence": 0.8722259,
+          "speaker": "B"
+        },
+        {
+          "text": "been",
+          "start": 354827,
+          "end": 355279,
+          "confidence": 0.9990301,
+          "speaker": "B"
+        },
+        {
+          "text": "cheated",
+          "start": 355279,
+          "end": 356103,
+          "confidence": 0.995516,
+          "speaker": "B"
+        },
+        {
+          "text": "by",
+          "start": 356119,
+          "end": 356459,
+          "confidence": 0.99854785,
+          "speaker": "B"
+        },
+        {
+          "text": "you",
+          "start": 358220,
+          "end": 358543,
+          "confidence": 0.99841475,
+          "speaker": "B"
+        },
+        {
+          "text": "since",
+          "start": 358656,
+          "end": 359868,
+          "confidence": 0.96624774,
+          "speaker": "B"
+        },
+        {
+          "text": "I",
+          "start": 360482,
+          "end": 360531,
+          "confidence": 0.9771928,
+          "speaker": "B"
+        },
+        {
+          "text": "drove",
+          "start": 360595,
+          "end": 360822,
+          "confidence": 0.6477398,
+          "speaker": "B"
+        },
+        {
+          "text": "over",
+          "start": 360822,
+          "end": 361048,
+          "confidence": 0.45109016,
+          "speaker": "B"
+        },
+        {
+          "text": "Beautiful.",
+          "start": 390072,
+          "end": 393161,
+          "confidence": 0.6682797,
+          "speaker": "B"
+        },
+        {
+          "text": "Some",
+          "start": 393836,
+          "end": 394255,
+          "confidence": 0.67919934,
+          "speaker": "B"
+        },
+        {
+          "text": "even",
+          "start": 394255,
+          "end": 395992,
+          "confidence": 0.3674076,
+          "speaker": "B"
+        },
+        {
+          "text": "more",
+          "start": 397799,
+          "end": 398254,
+          "confidence": 0.9930855,
+          "speaker": "B"
+        },
+        {
+          "text": "beautiful.",
+          "start": 398693,
+          "end": 399620,
+          "confidence": 0.9829244,
+          "speaker": "B"
+        }
+      ]
+    },
+    {
+      "speaker": "D",
+      "text": "Rockin', rockin' and rollin' down to the beach I'm strollin'. But the seagulls poking my head, not fun. I said seagulls, mm, stop it now.",
+      "confidence": 0.8829704,
+      "start": 548187,
+      "end": 562795,
+      "words": [
+        {
+          "text": "Rockin',",
+          "start": 548187,
+          "end": 548572,
+          "confidence": 0.6910906,
+          "speaker": "D"
+        },
+        {
+          "text": "rockin'",
+          "start": 549151,
+          "end": 549729,
+          "confidence": 0.9472717,
+          "speaker": "D"
+        },
+        {
+          "text": "and",
+          "start": 549729,
+          "end": 550018,
+          "confidence": 0.9904198,
+          "speaker": "D"
+        },
+        {
+          "text": "rollin'",
+          "start": 550195,
+          "end": 551512,
+          "confidence": 0.7465212,
+          "speaker": "D"
+        },
+        {
+          "text": "down",
+          "start": 552139,
+          "end": 552605,
+          "confidence": 0.6783539,
+          "speaker": "D"
+        },
+        {
+          "text": "to",
+          "start": 552621,
+          "end": 552798,
+          "confidence": 0.91397434,
+          "speaker": "D"
+        },
+        {
+          "text": "the",
+          "start": 552878,
+          "end": 553103,
+          "confidence": 0.9994842,
+          "speaker": "D"
+        },
+        {
+          "text": "beach",
+          "start": 553103,
+          "end": 553681,
+          "confidence": 0.9988851,
+          "speaker": "D"
+        },
+        {
+          "text": "I'm",
+          "start": 553730,
+          "end": 554003,
+          "confidence": 0.89833885,
+          "speaker": "D"
+        },
+        {
+          "text": "strollin'.",
+          "start": 554051,
+          "end": 554597,
+          "confidence": 0.7792716,
+          "speaker": "D"
+        },
+        {
+          "text": "But",
+          "start": 555658,
+          "end": 555802,
+          "confidence": 0.88122654,
+          "speaker": "D"
+        },
+        {
+          "text": "the",
+          "start": 555834,
+          "end": 555979,
+          "confidence": 0.9473281,
+          "speaker": "D"
+        },
+        {
+          "text": "seagulls",
+          "start": 555979,
+          "end": 557457,
+          "confidence": 0.9986991,
+          "speaker": "D"
+        },
+        {
+          "text": "poking",
+          "start": 557570,
+          "end": 558006,
+          "confidence": 0.865165,
+          "speaker": "D"
+        },
+        {
+          "text": "my",
+          "start": 558006,
+          "end": 558071,
+          "confidence": 0.9907522,
+          "speaker": "D"
+        },
+        {
+          "text": "head,",
+          "start": 558152,
+          "end": 558459,
+          "confidence": 0.7628685,
+          "speaker": "D"
+        },
+        {
+          "text": "not",
+          "start": 558572,
+          "end": 558993,
+          "confidence": 0.99223316,
+          "speaker": "D"
+        },
+        {
+          "text": "fun.",
+          "start": 559139,
+          "end": 559462,
+          "confidence": 0.80962723,
+          "speaker": "D"
+        },
+        {
+          "text": "I",
+          "start": 559721,
+          "end": 559737,
+          "confidence": 0.9941816,
+          "speaker": "D"
+        },
+        {
+          "text": "said",
+          "start": 559786,
+          "end": 560109,
+          "confidence": 0.9975394,
+          "speaker": "D"
+        },
+        {
+          "text": "seagulls,",
+          "start": 560109,
+          "end": 560886,
+          "confidence": 0.8087984,
+          "speaker": "D"
+        },
+        {
+          "text": "mm,",
+          "start": 561322,
+          "end": 561808,
+          "confidence": 0.5156508,
+          "speaker": "D"
+        },
+        {
+          "text": "stop",
+          "start": 562050,
+          "end": 562520,
+          "confidence": 0.99944526,
+          "speaker": "D"
+        },
+        {
+          "text": "it",
+          "start": 562520,
+          "end": 562568,
+          "confidence": 0.9993955,
+          "speaker": "D"
+        },
+        {
+          "text": "now.",
+          "start": 562697,
+          "end": 562795,
+          "confidence": 0.867738,
+          "speaker": "D"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "Father wears his Sunday best. Mother's tired, she needs a rest. The kids are playing up downstairs.",
+      "confidence": 0.955653,
+      "start": 663740,
+      "end": 671173,
+      "words": [
+        {
+          "text": "Father",
+          "start": 663740,
+          "end": 664312,
+          "confidence": 0.65323997,
+          "speaker": "B"
+        },
+        {
+          "text": "wears",
+          "start": 664378,
+          "end": 664656,
+          "confidence": 0.98484784,
+          "speaker": "B"
+        },
+        {
+          "text": "his",
+          "start": 664722,
+          "end": 664853,
+          "confidence": 0.9989975,
+          "speaker": "B"
+        },
+        {
+          "text": "Sunday",
+          "start": 664885,
+          "end": 665458,
+          "confidence": 0.9903065,
+          "speaker": "B"
+        },
+        {
+          "text": "best.",
+          "start": 665458,
+          "end": 666195,
+          "confidence": 0.88918674,
+          "speaker": "B"
+        },
+        {
+          "text": "Mother's",
+          "start": 667600,
+          "end": 667908,
+          "confidence": 0.9972149,
+          "speaker": "B"
+        },
+        {
+          "text": "tired,",
+          "start": 667908,
+          "end": 668022,
+          "confidence": 0.9715121,
+          "speaker": "B"
+        },
+        {
+          "text": "she",
+          "start": 668038,
+          "end": 668217,
+          "confidence": 0.9997774,
+          "speaker": "B"
+        },
+        {
+          "text": "needs",
+          "start": 668217,
+          "end": 668688,
+          "confidence": 0.99980944,
+          "speaker": "B"
+        },
+        {
+          "text": "a",
+          "start": 668688,
+          "end": 668753,
+          "confidence": 0.9867469,
+          "speaker": "B"
+        },
+        {
+          "text": "rest.",
+          "start": 668753,
+          "end": 668997,
+          "confidence": 0.9914299,
+          "speaker": "B"
+        },
+        {
+          "text": "The",
+          "start": 669094,
+          "end": 669354,
+          "confidence": 0.99669015,
+          "speaker": "B"
+        },
+        {
+          "text": "kids",
+          "start": 669403,
+          "end": 669630,
+          "confidence": 0.99932253,
+          "speaker": "B"
+        },
+        {
+          "text": "are",
+          "start": 669728,
+          "end": 669760,
+          "confidence": 0.9982938,
+          "speaker": "B"
+        },
+        {
+          "text": "playing",
+          "start": 669760,
+          "end": 670280,
+          "confidence": 0.99901474,
+          "speaker": "B"
+        },
+        {
+          "text": "up",
+          "start": 670312,
+          "end": 670394,
+          "confidence": 0.81284034,
+          "speaker": "B"
+        },
+        {
+          "text": "downstairs.",
+          "start": 670394,
+          "end": 671173,
+          "confidence": 0.97687024,
+          "speaker": "B"
+        }
+      ]
+    },
+    {
+      "speaker": "E",
+      "text": "Glitter in the sky, glitter in my eyes, shining slowly. Mommy, Daddy, look at me. I went to school and I got a degree. All my friends call it the big D. I went to school and I got the big D. I got the big D. I got the big D. I got the big D. I went to school and I got the big D. Is your muffin buttered? Would you like us to assign someone to butter your muffin? Excuse me. What? Excuse me.",
+      "confidence": 0.9578813,
+      "start": 685100,
+      "end": 736939,
+      "words": [
+        {
+          "text": "Glitter",
+          "start": 685100,
+          "end": 685963,
+          "confidence": 0.6329222,
+          "speaker": "E"
+        },
+        {
+          "text": "in",
+          "start": 686012,
+          "end": 686077,
+          "confidence": 0.9761964,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 686093,
+          "end": 686126,
+          "confidence": 0.98842305,
+          "speaker": "E"
+        },
+        {
+          "text": "sky,",
+          "start": 686126,
+          "end": 686387,
+          "confidence": 0.85595787,
+          "speaker": "E"
+        },
+        {
+          "text": "glitter",
+          "start": 686827,
+          "end": 687169,
+          "confidence": 0.99963963,
+          "speaker": "E"
+        },
+        {
+          "text": "in",
+          "start": 687169,
+          "end": 687250,
+          "confidence": 0.99418926,
+          "speaker": "E"
+        },
+        {
+          "text": "my",
+          "start": 687250,
+          "end": 687576,
+          "confidence": 0.9985221,
+          "speaker": "E"
+        },
+        {
+          "text": "eyes,",
+          "start": 687576,
+          "end": 687870,
+          "confidence": 0.74898195,
+          "speaker": "E"
+        },
+        {
+          "text": "shining",
+          "start": 687902,
+          "end": 688277,
+          "confidence": 0.9587168,
+          "speaker": "E"
+        },
+        {
+          "text": "slowly.",
+          "start": 688309,
+          "end": 689255,
+          "confidence": 0.7767387,
+          "speaker": "E"
+        },
+        {
+          "text": "Mommy,",
+          "start": 700327,
+          "end": 700699,
+          "confidence": 0.6988459,
+          "speaker": "E"
+        },
+        {
+          "text": "Daddy,",
+          "start": 701119,
+          "end": 701426,
+          "confidence": 0.8014906,
+          "speaker": "E"
+        },
+        {
+          "text": "look",
+          "start": 701620,
+          "end": 701943,
+          "confidence": 0.9993206,
+          "speaker": "E"
+        },
+        {
+          "text": "at",
+          "start": 701943,
+          "end": 702218,
+          "confidence": 0.9993625,
+          "speaker": "E"
+        },
+        {
+          "text": "me.",
+          "start": 702428,
+          "end": 702573,
+          "confidence": 0.8146824,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 703300,
+          "end": 703316,
+          "confidence": 0.99896526,
+          "speaker": "E"
+        },
+        {
+          "text": "went",
+          "start": 703316,
+          "end": 703736,
+          "confidence": 0.9998473,
+          "speaker": "E"
+        },
+        {
+          "text": "to",
+          "start": 703785,
+          "end": 703882,
+          "confidence": 0.99974746,
+          "speaker": "E"
+        },
+        {
+          "text": "school",
+          "start": 703882,
+          "end": 704447,
+          "confidence": 0.99976677,
+          "speaker": "E"
+        },
+        {
+          "text": "and",
+          "start": 704447,
+          "end": 704770,
+          "confidence": 0.94145966,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 704770,
+          "end": 704851,
+          "confidence": 0.9975726,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 704916,
+          "end": 705174,
+          "confidence": 0.9995739,
+          "speaker": "E"
+        },
+        {
+          "text": "a",
+          "start": 705174,
+          "end": 705255,
+          "confidence": 0.9722197,
+          "speaker": "E"
+        },
+        {
+          "text": "degree.",
+          "start": 705255,
+          "end": 705594,
+          "confidence": 0.98837996,
+          "speaker": "E"
+        },
+        {
+          "text": "All",
+          "start": 706437,
+          "end": 706695,
+          "confidence": 0.97699714,
+          "speaker": "E"
+        },
+        {
+          "text": "my",
+          "start": 706695,
+          "end": 706888,
+          "confidence": 0.9816648,
+          "speaker": "E"
+        },
+        {
+          "text": "friends",
+          "start": 707081,
+          "end": 707436,
+          "confidence": 0.99920577,
+          "speaker": "E"
+        },
+        {
+          "text": "call",
+          "start": 707484,
+          "end": 707774,
+          "confidence": 0.99479747,
+          "speaker": "E"
+        },
+        {
+          "text": "it",
+          "start": 707903,
+          "end": 708000,
+          "confidence": 0.9984535,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 708064,
+          "end": 708209,
+          "confidence": 0.9604009,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 708209,
+          "end": 708451,
+          "confidence": 0.6429314,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 708451,
+          "end": 708547,
+          "confidence": 0.986691,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 708709,
+          "end": 708725,
+          "confidence": 0.9990088,
+          "speaker": "E"
+        },
+        {
+          "text": "went",
+          "start": 708870,
+          "end": 709353,
+          "confidence": 0.99986315,
+          "speaker": "E"
+        },
+        {
+          "text": "to",
+          "start": 709353,
+          "end": 709562,
+          "confidence": 0.99970263,
+          "speaker": "E"
+        },
+        {
+          "text": "school",
+          "start": 709756,
+          "end": 710288,
+          "confidence": 0.9999032,
+          "speaker": "E"
+        },
+        {
+          "text": "and",
+          "start": 710626,
+          "end": 710787,
+          "confidence": 0.9940136,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 710787,
+          "end": 710868,
+          "confidence": 0.9982583,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 710868,
+          "end": 711045,
+          "confidence": 0.99971956,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 711045,
+          "end": 711206,
+          "confidence": 0.9973295,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 711206,
+          "end": 711464,
+          "confidence": 0.99775285,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 711609,
+          "end": 711850,
+          "confidence": 0.9844823,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 713784,
+          "end": 713864,
+          "confidence": 0.98029757,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 713864,
+          "end": 714106,
+          "confidence": 0.9977289,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 714106,
+          "end": 714267,
+          "confidence": 0.998467,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 714267,
+          "end": 714654,
+          "confidence": 0.99840266,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 714670,
+          "end": 714815,
+          "confidence": 0.9428615,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 716800,
+          "end": 716832,
+          "confidence": 0.9238082,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 716832,
+          "end": 717057,
+          "confidence": 0.98891276,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 717057,
+          "end": 717235,
+          "confidence": 0.9901564,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 717235,
+          "end": 717573,
+          "confidence": 0.8457646,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 717622,
+          "end": 717896,
+          "confidence": 0.7844454,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 719734,
+          "end": 719815,
+          "confidence": 0.99218035,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 719815,
+          "end": 720056,
+          "confidence": 0.9921806,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 720056,
+          "end": 720282,
+          "confidence": 0.9988059,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 720282,
+          "end": 720476,
+          "confidence": 0.9992169,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 720621,
+          "end": 721008,
+          "confidence": 0.97557336,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 721346,
+          "end": 721427,
+          "confidence": 0.9985642,
+          "speaker": "E"
+        },
+        {
+          "text": "went",
+          "start": 721427,
+          "end": 721588,
+          "confidence": 0.99949837,
+          "speaker": "E"
+        },
+        {
+          "text": "to",
+          "start": 721588,
+          "end": 721717,
+          "confidence": 0.9996038,
+          "speaker": "E"
+        },
+        {
+          "text": "school",
+          "start": 722040,
+          "end": 722282,
+          "confidence": 0.99934846,
+          "speaker": "E"
+        },
+        {
+          "text": "and",
+          "start": 722477,
+          "end": 723578,
+          "confidence": 0.8458476,
+          "speaker": "E"
+        },
+        {
+          "text": "I",
+          "start": 723691,
+          "end": 723724,
+          "confidence": 0.9967872,
+          "speaker": "E"
+        },
+        {
+          "text": "got",
+          "start": 724744,
+          "end": 725295,
+          "confidence": 0.9996885,
+          "speaker": "E"
+        },
+        {
+          "text": "the",
+          "start": 725311,
+          "end": 725570,
+          "confidence": 0.99631953,
+          "speaker": "E"
+        },
+        {
+          "text": "big",
+          "start": 725716,
+          "end": 726299,
+          "confidence": 0.9992481,
+          "speaker": "E"
+        },
+        {
+          "text": "D.",
+          "start": 726445,
+          "end": 726752,
+          "confidence": 0.9917763,
+          "speaker": "E"
+        },
+        {
+          "text": "Is",
+          "start": 727497,
+          "end": 727708,
+          "confidence": 0.96338075,
+          "speaker": "E"
+        },
+        {
+          "text": "your",
+          "start": 727886,
+          "end": 728080,
+          "confidence": 0.9953753,
+          "speaker": "E"
+        },
+        {
+          "text": "muffin",
+          "start": 728145,
+          "end": 728566,
+          "confidence": 0.99970657,
+          "speaker": "E"
+        },
+        {
+          "text": "buttered?",
+          "start": 728712,
+          "end": 729295,
+          "confidence": 0.99824196,
+          "speaker": "E"
+        },
+        {
+          "text": "Would",
+          "start": 730040,
+          "end": 730217,
+          "confidence": 0.9891822,
+          "speaker": "E"
+        },
+        {
+          "text": "you",
+          "start": 730217,
+          "end": 730250,
+          "confidence": 0.99871063,
+          "speaker": "E"
+        },
+        {
+          "text": "like",
+          "start": 730250,
+          "end": 730557,
+          "confidence": 0.99943,
+          "speaker": "E"
+        },
+        {
+          "text": "us",
+          "start": 730557,
+          "end": 730718,
+          "confidence": 0.9384129,
+          "speaker": "E"
+        },
+        {
+          "text": "to",
+          "start": 730718,
+          "end": 730880,
+          "confidence": 0.9943473,
+          "speaker": "E"
+        },
+        {
+          "text": "assign",
+          "start": 730961,
+          "end": 731284,
+          "confidence": 0.99374723,
+          "speaker": "E"
+        },
+        {
+          "text": "someone",
+          "start": 731284,
+          "end": 731510,
+          "confidence": 0.9989405,
+          "speaker": "E"
+        },
+        {
+          "text": "to",
+          "start": 731510,
+          "end": 731849,
+          "confidence": 0.99908507,
+          "speaker": "E"
+        },
+        {
+          "text": "butter",
+          "start": 731849,
+          "end": 732156,
+          "confidence": 0.9993279,
+          "speaker": "E"
+        },
+        {
+          "text": "your",
+          "start": 732156,
+          "end": 732415,
+          "confidence": 0.99959654,
+          "speaker": "E"
+        },
+        {
+          "text": "muffin?",
+          "start": 732415,
+          "end": 732803,
+          "confidence": 0.9989391,
+          "speaker": "E"
+        },
+        {
+          "text": "Excuse",
+          "start": 733061,
+          "end": 733691,
+          "confidence": 0.9849857,
+          "speaker": "E"
+        },
+        {
+          "text": "me.",
+          "start": 733691,
+          "end": 733885,
+          "confidence": 0.6423092,
+          "speaker": "E"
+        },
+        {
+          "text": "What?",
+          "start": 734515,
+          "end": 735485,
+          "confidence": 0.9674331,
+          "speaker": "E"
+        },
+        {
+          "text": "Excuse",
+          "start": 736293,
+          "end": 736778,
+          "confidence": 0.9974348,
+          "speaker": "E"
+        },
+        {
+          "text": "me.",
+          "start": 736778,
+          "end": 736939,
+          "confidence": 0.98890334,
+          "speaker": "E"
+        }
+      ]
+    },
+    {
+      "speaker": "B",
+      "text": "What? For you know time is nigh. When I must prove your ways, then you will understand.",
+      "confidence": 0.7632306,
+      "start": 737343,
+      "end": 916607,
+      "words": [
+        {
+          "text": "What?",
+          "start": 737343,
+          "end": 737892,
+          "confidence": 0.9942147,
+          "speaker": "B"
+        },
+        {
+          "text": "For",
+          "start": 899655,
+          "end": 901110,
+          "confidence": 0.41560972,
+          "speaker": "B"
+        },
+        {
+          "text": "you",
+          "start": 901110,
+          "end": 901174,
+          "confidence": 0.8301971,
+          "speaker": "B"
+        },
+        {
+          "text": "know",
+          "start": 901514,
+          "end": 901772,
+          "confidence": 0.96065646,
+          "speaker": "B"
+        },
+        {
+          "text": "time",
+          "start": 902435,
+          "end": 903922,
+          "confidence": 0.3062739,
+          "speaker": "B"
+        },
+        {
+          "text": "is",
+          "start": 904197,
+          "end": 904326,
+          "confidence": 0.6527883,
+          "speaker": "B"
+        },
+        {
+          "text": "nigh.",
+          "start": 904650,
+          "end": 904827,
+          "confidence": 0.7379598,
+          "speaker": "B"
+        },
+        {
+          "text": "When",
+          "start": 905552,
+          "end": 906101,
+          "confidence": 0.7686649,
+          "speaker": "B"
+        },
+        {
+          "text": "I",
+          "start": 906617,
+          "end": 906794,
+          "confidence": 0.9805086,
+          "speaker": "B"
+        },
+        {
+          "text": "must",
+          "start": 907020,
+          "end": 909664,
+          "confidence": 0.9721095,
+          "speaker": "B"
+        },
+        {
+          "text": "prove",
+          "start": 909890,
+          "end": 912738,
+          "confidence": 0.7384775,
+          "speaker": "B"
+        },
+        {
+          "text": "your",
+          "start": 912738,
+          "end": 912900,
+          "confidence": 0.9121306,
+          "speaker": "B"
+        },
+        {
+          "text": "ways,",
+          "start": 912900,
+          "end": 913046,
+          "confidence": 0.6752852,
+          "speaker": "B"
+        },
+        {
+          "text": "then",
+          "start": 913305,
+          "end": 914260,
+          "confidence": 0.783362,
+          "speaker": "B"
+        },
+        {
+          "text": "you",
+          "start": 914762,
+          "end": 915037,
+          "confidence": 0.9920997,
+          "speaker": "B"
+        },
+        {
+          "text": "will",
+          "start": 915166,
+          "end": 915992,
+          "confidence": 0.67751235,
+          "speaker": "B"
+        },
+        {
+          "text": "understand.",
+          "start": 916137,
+          "end": 916607,
+          "confidence": 0.5770699,
+          "speaker": "B"
+        }
+      ]
+    }
+  ],
+  "audio_duration": 921
+}
