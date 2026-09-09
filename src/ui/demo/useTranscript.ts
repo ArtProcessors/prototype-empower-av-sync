@@ -37,7 +37,10 @@ export function useTranscript(
 
     let live = true
 
-    void loadTranscript(mediaId).then(loaded => {
+    // No rejection to handle: `loadTranscript` resolves to `null` when it
+    // cannot fetch, because a listener whose audio is fine should not be told
+    // that the words did not arrive.
+    loadTranscript(mediaId).then(loaded => {
       if (live) {
         setTranscript(loaded)
       }

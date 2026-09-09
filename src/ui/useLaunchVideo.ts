@@ -73,7 +73,11 @@ export function useLaunchVideo({
     // other guard — a device invited to a room is here to listen, and no URL
     // can unlock its audio for it.
     if (intent.autostart && known && roomToJoin(intent) === null) {
-      void session.becomeScreen()
+      // Neither awaited nor chained: `becomeScreen` never rejects — it puts
+      // its own failure into session state and lands the page back on the
+      // start screen (see `core/session.ts`) — so there is nothing here for a
+      // result or a rejection to be done with.
+      session.becomeScreen()
     }
   }, [intent, known, requested, session])
 
