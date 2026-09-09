@@ -248,6 +248,19 @@
   outline: 2px solid var(--colour-info);
   outline-offset: 2px;
 }
+/* Icon-only ghosts keep the 44px target but drop the extra inline padding
+   that was there for words, so they stay a circle rather than an empty pill. */
+.ghostIcon {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  inline-size: 44px;
+  border-width: 2px;
+}
+.ghostArt {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+}
 /* Switched on. A ghost button carries no state of its own, and this one is a
    toggle — so it says which way it is set by lighting its own outline, rather
    than by changing its label to the thing it is not. Before `.ghostUrgent`,
@@ -274,6 +287,13 @@
   padding-block: 14px;
   padding-block-end: max(14px, env(safe-area-inset-bottom));
   border-top: 1px solid #1c1c1e;
+}
+.footer.hugSides {
+  justify-content: space-between;
+}
+.footerActions {
+  display: flex;
+  gap: 10px;
 }
 .room {
   color: var(--demo-dimmer);

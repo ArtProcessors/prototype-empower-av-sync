@@ -211,40 +211,100 @@ export function DemoFollowerView({
         </div>
       </div>
 
-      <footer className={styles.footer}>
+      <footer
+        className={classNames(styles.footer, roomCode && styles.hugSides)}
+      >
         {roomCode && <span className={styles.room}>Room {roomCode}</span>}
 
-        <button
-          className={classNames(styles.ghost, stuck && styles.ghostUrgent)}
-          onClick={() => window.location.reload()}
-        >
-          Refresh
-        </button>
-
-        {/* Offered only where there is something to show. A switch that
-            silently does nothing on the videos with no transcript would be
-            worse than not having one. */}
+        {/* Named on the button, not the picture: an icon-only control still
+            has to say what it does, and the glyph is decoration. Offered
+            only where there is something to show — a switch that silently
+            does nothing on the videos with no transcript would be worse
+            than not having one. */}
         {started && transcriptExists(mediaId) && (
           <button
-            className={classNames(styles.ghost, captions && styles.ghostOn)}
+            className={classNames(
+              styles.ghost,
+              styles.ghostIcon,
+              captions && styles.ghostOn,
+            )}
+            aria-label="Transcript"
             aria-pressed={captions}
             onClick={toggleCaptions}
           >
-            Transcript
+            <svg
+              className={styles.ghostArt}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect width="18" height="14" x="3" y="5" rx="2" />
+              <path d="M7 15h4" />
+              <path d="M15 15h2" />
+              <path d="M7 11h2" />
+              <path d="M13 11h4" />
+            </svg>
           </button>
         )}
 
-        {started && (
-          <button className={styles.ghost} onClick={() => session.leave()}>
-            Stop
+        <div className={styles.footerActions}>
+          <button
+            className={classNames(
+              styles.ghost,
+              styles.ghostIcon,
+              stuck && styles.ghostUrgent,
+            )}
+            aria-label="Refresh"
+            onClick={() => window.location.reload()}
+          >
+            <svg
+              className={styles.ghostArt}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
           </button>
-        )}
 
-        {!started && !invitedRoom && (
-          <button className={styles.ghost} onClick={onSetUpScreen}>
-            Set up the screen
-          </button>
-        )}
+          {started && (
+            <button
+              className={classNames(styles.ghost, styles.ghostIcon)}
+              aria-label="Stop"
+              onClick={() => session.leave()}
+            >
+              <svg
+                className={styles.ghostArt}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <rect
+                  x="6"
+                  y="6"
+                  width="12"
+                  height="12"
+                  rx="1.5"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          )}
+
+          {!started && !invitedRoom && (
+            <button className={styles.ghost} onClick={onSetUpScreen}>
+              Set up the screen
+            </button>
+          )}
+        </div>
       </footer>
     </main>
   )
