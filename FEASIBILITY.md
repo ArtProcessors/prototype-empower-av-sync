@@ -15,7 +15,7 @@ headphones, **tightly enough locked that the audio audibly belongs to the pictur
 
 1. **No media over the wire.** Video and audio live on each device (PWA-cached or fetched
    from static hosting); the network carries only tiny sync beats.
-2. **No infrastructure to run.** Serverless WebRTC (Trystero) — no sync server, no media
+2. **No infrastructure to run.** Serverless WebRTC — no sync server, no media
    server, no backend deploy. _This is the one goal the spike gave ground on:_ it now
    deploys a single Cloudflare Worker that mints TURN credentials and carries peer
    signalling. Still no sync server and no media server — see "Signalling is self-hosted"
@@ -39,16 +39,18 @@ visitor's pocket.
 The screen is a **fixed leader**; phones are followers in a star topology. Roles never
 migrate. All logic is client-side in a PWA (Vite + React + TypeScript).
 
-**Transport** ([sync-controller.ts](src/transport/sync-controller.ts)) — peers meet through
-Trystero (WebRTC data channels), but over this app's **own signalling relay**: a Durable
-Object on the same Worker that serves the SPA ([signal-relay.ts](worker/signal-relay.ts), a
-WebSocket pub/sub hub at `/signal`) and through nothing else. Followers join `passive`, so
-they dial the screen and never each other — Trystero otherwise meshes a room, and nothing
-here is ever sent follower to follower. Owning the relay is what makes that affordable: it
-retains each peer's last announce and replays it to whoever subscribes next, so a passive
-follower activates the instant it connects rather than waiting out the screen's 5.3 s
-announce interval. ICE is pinned to **Cloudflare TURN, relay-only** (`iceTransportPolicy: 'relay'`, Trystero's default Google STUN servers
-replaced), with credentials minted per client from `/api/ice` — so every beat below travels
+**Transport** ([sync-controller.ts](src/transport/sync-controller.ts)) — peers meet over
+this app's **own signalling relay** and through nothing else: a Durable Object on the same
+Worker that serves the SPA ([room-relay.ts](worker/room-relay.ts), a room hub at `/room`).
+Because the relay knows its own membership, discovery is an introduction rather than a
+search — a follower is told about the screen the moment it joins, the screen is told about
+the follower, and the screen dials. That also makes the star structural: a follower is never
+given another follower's id, and the relay refuses to route to one it did not introduce.
+The WebRTC connection itself is built directly on `RTCPeerConnection`
+([peer-link.ts](src/transport/peer-link.ts)) — the screen always offers and the follower
+always answers, so two offers can never cross and none of perfect negotiation is needed.
+ICE is pinned to **Cloudflare TURN, relay-only** (`iceTransportPolicy: 'relay'`),
+with credentials minted per client from `/api/ice` — so every beat below travels
 screen → Cloudflare → phone, even on the same Wi-Fi. The wire protocol is two messages:
 
 - **`beat`** (screen → all, 4×/sec): `{ mediaId, videoTime, wall, playing, duration }` —
@@ -168,8 +170,8 @@ re-routed, rather than being folded into an EMA that could only crawl.
     as a peer connection does. If a bare `fetch` cannot complete, nothing can. (The relay
     since built is for _signalling_, and was built to fix slow and rate-limited peer
     discovery — not this. It goes down with the radio like everything else.)
-  - **Trystero's 5 s teardown stops mattering.** It closes a peer 5 s after ICE reports
-    `disconnected` where the spec would wait ~30 s for `failed`, which is genuinely too
+  - **Teardown aggressiveness stops mattering.** The transport of the day closed a peer 5 s
+    after ICE reported `disconnected`, where the spec would wait ~30 s for `failed` — too
     aggressive for a phone — but the network here stays down for _minutes_, so patching it
     would change nothing.
 
@@ -304,9 +306,9 @@ screen's 127 MB video for the 15-minute clip.
   sits inside the Workers free tier at venue scale, but an outage there is an outage for
   joining — survivable rather than fatal, since the connection reconnects and re-announces on
   its own and playback never depended on it, but new listeners cannot arrive while it lasts.
-  Trystero's public backends were removed once the comparison concluded: they were selectable
-  only at build time, so they were never outage insurance, and announce retention means they
-  are no longer equivalent to the app's own relay anyway.
+  Third-party public signalling backends were removed once the comparison concluded: they
+  were selectable only at build time, so they were never outage insurance, and a relay that
+  cannot address a peer could not offer the introduction this design now depends on.
 - **Room codes are the only access control.** The 4-character code doubles as the room
   password; anyone who can reach the signaling network and guess/see a code can join.
   Acceptable for listening to a public soundtrack, but worth being deliberate about.
@@ -319,10 +321,12 @@ Scope boundaries of the current design (as opposed to defects):
   returns; followers show "screen offline". No gossip relay — every follower needs its own
   relayed connection to the screen (relay-only ICE means there is no direct path even on the
   same LAN).
-- **The star is enforced, not assumed.** Trystero meshes a room by default, which would put
-  ~N²/2 relayed connections on a gallery floor to carry nothing: only the screen sends beats.
-  Followers therefore join `passive` — passive peers connect only to an active peer, never to
-  each other. Verified with one screen and two followers: one peer each, two on the screen.
+- **The star is enforced, not assumed.** A meshed room would put ~N²/2 relayed connections on
+  a gallery floor to carry nothing: only the screen sends beats. The relay therefore shows a
+  follower nothing but the screen, so the shape holds even against a buggy or hostile client
+  rather than resting on one setting a flag on itself. Verified with one screen and two
+  followers: one peer each, two on the screen, and covered in
+  [relay-sim.ts](test/relay-sim.ts).
 - **Looping-video model only.** The sync target is a single continuously looping video.
   Playlists, seek-by-operator, multiple simultaneous zones, or paused-by-default content
   would need protocol extensions (the `paused` beat state exists but is untested as a mode).
@@ -418,9 +422,10 @@ Scope boundaries of the current design (as opposed to defects):
 - **Signalling reliability at event scale.** The Durable Object has been exercised by a
   handful of peers, not a room full: hibernation behaviour under continuous churn and Workers
   free-tier limits are unmeasured. A relay outage mid-session is no longer open, though: the
-  connection reconnects underneath Trystero and replays the room's subscriptions and its
-  announce, which was the gap that made a Worker redeploy leave the screen permanently
-  undiscoverable while it still looked healthy. Measured by killing the Worker with a session
+  socket reconnects underneath the session and re-joins the room, which was the gap that made
+  a Worker redeploy leave the screen permanently undiscoverable while it still looked
+  healthy. A re-join is a new identity, so the screen redials — about a second of missed
+  beats, well inside the corrector's freshness window. Measured by killing the Worker with a session
   live — drop detected in ~1 s, recovery on the Worker's return, the next listener peering in
   under a second, and no peer connection disturbed at any point. What is still unmeasured is
   the same event with a room full of phones behind it, where every device reconnects at once

@@ -13,13 +13,14 @@ Chrome, with no per-device calibration step.
 > [FEASIBILITY.md](FEASIBILITY.md). This file is for getting the thing running
 > and knowing your way around it.
 
-Sibling of `empower-peer-to-peer` — it reuses that project's Trystero transport
-and PWA/offline patterns, but with a continuous sync engine in place of the
-gallery's event model.
+Sibling of `empower-peer-to-peer` — it reuses that project's PWA/offline
+patterns, but with a continuous sync engine in place of the gallery's event
+model, and a transport built directly on `RTCPeerConnection`.
 
-**Stack:** Vite 7 · React 18 · TypeScript · `vite-plugin-pwa` · Trystero
-(WebRTC data channels) · Cloudflare Worker + Durable Object (signalling, TURN
-credentials, hosting) · `mp4box` + WebCodecs · Yarn 4 · Node 24.13.0.
+**Stack:** Vite 7 · React 18 · TypeScript · `vite-plugin-pwa` · WebRTC data
+channels (no peer-to-peer library) · Cloudflare Worker + Durable Object
+(signalling, TURN credentials, hosting) · `mp4box` + WebCodecs · Yarn 4 ·
+Node 24.13.0.
 
 ## The 30-second version
 
@@ -109,9 +110,11 @@ carries `&debug=1`, so the phone lands instrumented too.
 ## Features
 
 **Fixed-leader sync protocol** ([sync-controller.ts](src/transport/sync-controller.ts))
-— star topology, roles never migrate. Followers join Trystero `passive`, so
-they dial only the screen and never each other. The pure offset/target/drift
-math is isolated and unit-tested in [sync-math.ts](src/sync/sync-math.ts).
+— star topology, roles never migrate. The relay enforces the star rather than
+trusting a client flag: a follower is only ever told about the screen, so it
+cannot dial another follower even if it wanted to. The pure offset/target/drift
+math is isolated and unit-tested in [sync-math.ts](src/sync/sync-math.ts), and
+the relay's room rules in [relay-sim.ts](test/relay-sim.ts).
 
 **Three audio engines**, chosen per source and per platform
 ([audio-sync-controller.ts](src/media/audio-sync-controller.ts)). `engineFor()`
@@ -152,8 +155,8 @@ Backgrounding cross-fades between legs over 6 ms rather than re-wiring nodes.
 policy in [reconnect-policy.ts](src/core/reconnect-policy.ts)) — if beats have
 been absent > 6 s the follower rejoins the room without touching the audio
 engine, so the free-run chain keeps sounding across it. While hidden, a rejoin is
-gated on the `/api/ping` reachability probe. Signalling also reconnects
-underneath Trystero and re-announces ([worker-strategy.ts](src/transport/worker-strategy.ts)).
+gated on the `/api/ping` reachability probe. The signalling socket reconnects
+underneath the session and re-joins ([signal-socket.ts](src/transport/signal-socket.ts)).
 
 **Zero-touch screens** — a display can be told what to be entirely by the link it
 is switched on with (`/?video=soh&autostart=1`), so an installed screen needs
@@ -424,7 +427,7 @@ content from remote hosting.
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/core/`             | The session: `createSyncSession()` composes transport, corrector, watchdog, wake lock and screen video into one snapshot store. No React. `core/index.ts` is the whole public surface. |
 | `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math                                                                                                                                        |
-| `src/transport/`        | Trystero rooms, beats, clock RPC, ICE config, Worker signalling strategy                                                                                                               |
+| `src/transport/`        | Signalling socket, WebRTC negotiation, beats, clock RPC, ICE config                                                                                                                    |
 | `src/media/`            | The follower's corrector and its three output engines                                                                                                                                  |
 | `src/diagnostics/`      | The session log and the monitors that feed it                                                                                                                                          |
 | `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it. `transcripts/` holds the word-timed files, lazily imported                                             |
@@ -458,7 +461,7 @@ cover the rest.
   snapshot, so redrawing at display rate never re-renders anything. The listener's
   ring is built on it.
 - Timings, room-code rules, storage keys and drift bands are `configureSession()`;
-  the Trystero app id and Worker routes are `configureTransport()`. Both default
+  the Worker routes are `configureTransport()`. Both default
   to what this app uses, and nothing here calls either.
 
 ## Gotchas worth knowing up front

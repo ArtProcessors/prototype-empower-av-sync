@@ -36,7 +36,7 @@ export type DiagnosticCategory =
   | 'net'
   /** Page lifecycle: visibility, freeze, resume, discard. */
   | 'page'
-  /** Trystero peer lifecycle: joins and leaves. */
+  /** Peer lifecycle: links opening and closing. */
   | 'peer'
   /** Renderer liveness: gaps between ticks of a 1 Hz timer. */
   | 'timer'
@@ -205,7 +205,7 @@ function formatClockTime(at: number): string {
 /**
  * Gap between an event and the one before it, as a `+1.2s` string. The gaps
  * are the point of the log: a peer leaving ~5 s after an ICE `disconnected` is
- * Trystero's teardown timer, not a network failure.
+ * a deliberate teardown, not a network failure.
  */
 function formatGap(at: number, previousAt: number | null): string {
   if (previousAt === null) {

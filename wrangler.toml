@@ -29,13 +29,24 @@ not_found_handling = "single-page-application"
 # fan messages between peers — requests land in different isolates — so peer
 # discovery lives in a Durable Object.
 [[durable_objects.bindings]]
-name = "SIGNAL_RELAY"
-class_name = "SignalRelay"
+name = "ROOM_RELAY"
+class_name = "RoomRelay"
 
 # SQLite-backed, which is what the Workers Free plan supports.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalRelay"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RoomRelay"]
+
+# SignalRelay carried the old topic pub/sub protocol and has no reader left.
+# Safe to drop: it stored nothing beyond per-socket attachments, which never
+# outlive the connection that carried them.
+[[migrations]]
+tag = "v3"
+deleted_classes = ["SignalRelay"]
 
 [vars]
 # Credential lifetime. Long enough that a visitor session never straddles an

@@ -19,14 +19,14 @@
  * Serving the SPA from the same Worker keeps `/api/ice` same-origin, so there
  * is no CORS surface to get wrong in production.
  *
- * It also carries the signalling relay at {@link SIGNAL_PATH}, backed by a
- * Durable Object (see `signal-relay.ts`) — replacing the public Nostr relays
- * that rate-limited peer discovery.
+ * It also carries the signalling relay at {@link ROOM_PATH}, backed by a
+ * Durable Object (see `room-relay.ts`) — the one place that knows which peers
+ * are in a room, and so the one place that can introduce them.
  */
-import { ICE_PATH, PING_PATH, SIGNAL_PATH } from '../shared/api-routes'
+import { ICE_PATH, PING_PATH, ROOM_PATH } from '../shared/api-routes'
 import type { IceConfigResponse, IceServerPayload } from '../shared/ice'
 
-export { SignalRelay } from './signal-relay'
+export { RoomRelay } from './room-relay'
 
 /** Bindings and secrets this Worker expects; see `wrangler.toml`. */
 export interface Env {
@@ -53,13 +53,13 @@ export interface Env {
   /** Static assets binding — the built SPA in `dist/`. */
   ASSETS: { fetch: (request: Request) => Promise<Response> }
   /** Durable Object namespace for the signalling relay. */
-  SIGNAL_RELAY: DurableObjectNamespace
+  ROOM_RELAY: DurableObjectNamespace
 }
 
 /**
- * Durable Object instance name. One hub serves every room — Trystero namespaces
- * its topics by app and room id already, so rooms stay isolated without a DO
- * each. Sharding by room is a scale optimisation, not a correctness one.
+ * Durable Object instance name. One hub serves every room — the relay only
+ * ever shows a peer members of its own room, so rooms stay isolated without a
+ * DO each. Sharding by room is a scale optimisation, not a correctness one.
  */
 const SIGNAL_INSTANCE = 'default'
 
@@ -175,10 +175,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
 
-    if (url.pathname === SIGNAL_PATH) {
-      const id = env.SIGNAL_RELAY.idFromName(SIGNAL_INSTANCE)
+    if (url.pathname === ROOM_PATH) {
+      const id = env.ROOM_RELAY.idFromName(SIGNAL_INSTANCE)
 
-      return env.SIGNAL_RELAY.get(id).fetch(request)
+      return env.ROOM_RELAY.get(id).fetch(request)
     }
 
     if (url.pathname === PING_PATH) {

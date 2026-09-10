@@ -300,12 +300,10 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
     try {
       // Leave first — rejoining the same room while the dead session lingers
-      // can collide. A rejection here used to be swallowed, and it is the one
-      // line worth having: the transport only forgets a room whose `leave()`
-      // finished, so a leave that failed is what turns the next rejoin into a
-      // `RecycledRoomError`. Not rethrown — the rejoin below is still worth
-      // attempting, and on the attempt after this one it usually works, once
-      // the dead peers have been evicted.
+      // can collide. Logged rather than swallowed: a leave that fails means a
+      // socket or a peer connection did not come down cleanly, and the rejoin
+      // that follows is the thing most likely to be confused by it. Not
+      // rethrown, because the rejoin is still worth attempting.
       await controller?.leave().catch((caught: unknown) => {
         recordDiagnostic(
           'transport',

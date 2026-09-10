@@ -20,5 +20,13 @@ export const ICE_PATH = '/api/ice'
  */
 export const PING_PATH = '/api/ping'
 
-/** WebSocket endpoint peers meet on; upgraded straight into the Durable Object. */
-export const SIGNAL_PATH = '/signal'
+/**
+ * WebSocket endpoint peers meet on, upgraded straight into the Durable Object.
+ * Speaks the room protocol in `shared/room-protocol.ts`.
+ *
+ * Named for what it carries rather than the generic `/signal` it replaced. A
+ * client built before the migration would have spoken the old topic protocol
+ * at this path and been quietly ignored; on a path that no longer exists it
+ * fails loudly instead, which is the outcome worth having.
+ */
+export const ROOM_PATH = '/room'

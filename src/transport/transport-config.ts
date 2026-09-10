@@ -1,6 +1,6 @@
 /**
  * The handful of values a host embedding this transport might need to repoint:
- * the Trystero namespace and the three Worker routes.
+ * the three Worker routes.
  *
  * They were module constants, which is fine for one app and useless for a
  * second. This is deliberately the smallest seam that fixes that — a
@@ -8,25 +8,22 @@
  * Nothing in this repo calls {@link configureTransport}, so the defaults below
  * are what runs.
  */
-import { ICE_PATH, PING_PATH, SIGNAL_PATH } from '../../shared/api-routes'
+import { ICE_PATH, PING_PATH, ROOM_PATH } from '../../shared/api-routes'
 
 /** Endpoints and identifiers the transport resolves at call time. */
 export interface TransportConfig {
-  /** Trystero namespace — peers only meet other peers using the same id. */
-  appId: string
   /** Worker route that mints a credential pair for this client. */
   icePath: string
   /** Worker route used as a cheap network-liveness probe. */
   pingPath: string
   /** Worker route the signalling WebSocket upgrades on. */
-  signalPath: string
+  roomPath: string
 }
 
 const defaults: TransportConfig = {
-  appId: 'empower-av-sync-v1',
   icePath: ICE_PATH,
   pingPath: PING_PATH,
-  signalPath: SIGNAL_PATH,
+  roomPath: ROOM_PATH,
 }
 
 let current: TransportConfig = defaults

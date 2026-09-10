@@ -10,10 +10,11 @@
     "dev": "vite serve",
     "build": "tsc --noEmit && yarn worker:check && yarn test:check && vite build",
     "preview": "vite preview",
-    "sim": "yarn sim:math && yarn sim:keep-awake && yarn sim:transcript",
+    "sim": "yarn sim:math && yarn sim:keep-awake && yarn sim:transcript && yarn sim:relay",
     "sim:math": "node --import ./test/resolve-ts.mjs test/sync-sim.ts",
     "sim:keep-awake": "node --import ./test/resolve-ts.mjs test/keep-awake-sim.ts",
     "sim:transcript": "node --import ./test/resolve-ts.mjs test/transcript-sim.ts",
+    "sim:relay": "node --import ./test/resolve-ts.mjs test/relay-sim.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "worker:check": "tsc --noEmit -p worker/tsconfig.json",
@@ -22,7 +23,6 @@
     "deploy": "yarn build && wrangler deploy"
   },
   "dependencies": {
-    "@trystero-p2p/core": "~0.25.4",
     "mp4box": "~2.4.1",
     "qrcode": "~1.5.4",
     "react": "^18.3.1",

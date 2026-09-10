@@ -3,8 +3,8 @@
  *
  * Two questions this exists to answer:
  *
- *  1. **Is the link being closed prematurely?** Trystero tears a peer down 5 s
- *     after ICE reports `disconnected` (`@trystero-p2p/core`, `peer.mjs`),
+ *  1. **Is the link being closed prematurely?** A link is torn down as soon as
+ *     the connection reports `failed` or `closed`,
  *     where the spec's own give-up point is `failed` at ~30 s of consent
  *     freshness failure. `disconnected` routinely self-heals on a phone — Wi-Fi
  *     power-save, a cellular handover or a Doze gap can all produce a stall

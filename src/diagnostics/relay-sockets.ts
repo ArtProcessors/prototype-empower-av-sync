@@ -9,7 +9,10 @@
  *
  * Logging socket readiness at the moment a rejoin is decided separates them.
  */
-import { getRelaySockets } from '../transport/worker-strategy'
+import {
+  getSignalSockets,
+  takeSignalTraffic,
+} from '../transport/signal-socket'
 import { recordDiagnostic } from './session-log'
 
 /** `WebSocket.readyState` values, named for the log. */
@@ -38,15 +41,41 @@ function relayHost(url: string): string {
 type RelayReportContext = 'rejoin'
 
 /**
+ * One line describing the signalling traffic since the last report.
+ *
+ * Read against the socket state beside it, this says which half of a failed
+ * join broke. No presence frames at all means the relay never answered the
+ * join; presence but no signals means the room was introduced and the
+ * negotiation went nowhere. `readyState` alone could never tell those apart —
+ * an open socket carrying nothing looks exactly like an open socket in an
+ * empty room.
+ *
+ * Abbreviated hard, because it shares a line with the socket counts and is
+ * read on a phone.
+ */
+function describeTraffic(): string {
+  const seen = takeSignalTraffic()
+
+  return (
+    ` · ${seen.joins} join, ${seen.presenceIn} presence` +
+    ` · sig ${seen.signalsIn} in / ${seen.signalsOut} out` +
+    `${seen.drops ? ` · ${seen.drops} drop` : ''}`
+  )
+}
+
+/**
  * Record how many signalling relays are connected, naming any that are not.
  * Best-effort: never throws.
  */
 export function reportRelaySockets(context: RelayReportContext): void {
   try {
-    const sockets = Object.entries(getRelaySockets() ?? {})
+    const sockets = Object.entries(getSignalSockets() ?? {})
 
     if (!sockets.length) {
-      recordDiagnostic('net', `relays (${context}): none connected`)
+      recordDiagnostic(
+        'net',
+        `relays (${context}): none connected${describeTraffic()}`,
+      )
 
       return
     }
@@ -61,7 +90,8 @@ export function reportRelaySockets(context: RelayReportContext): void {
     recordDiagnostic(
       'net',
       `relays (${context}): ${open.length}/${sockets.length} open` +
-        `${unhealthy.length ? ` — ${unhealthy.join(' ')}` : ''}`,
+        `${unhealthy.length ? ` — ${unhealthy.join(' ')}` : ''}` +
+        describeTraffic(),
     )
   } catch {
     /* diagnostics must never break a session */

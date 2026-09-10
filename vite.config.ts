@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-import { SIGNAL_PATH } from './shared/api-routes'
+import { ROOM_PATH } from './shared/api-routes'
 
 // `/api/ice` is served by the Cloudflare Worker (worker/index.ts). In production
 // the Worker serves the app too, so the call is same-origin; locally we proxy to
@@ -15,7 +15,7 @@ const apiProxy = {
     changeOrigin: true,
   },
   // Peer signalling upgrades to a WebSocket, so this leg needs `ws: true`.
-  [SIGNAL_PATH]: {
+  [ROOM_PATH]: {
     target: 'ws://127.0.0.1:8787',
     ws: true,
     changeOrigin: true,

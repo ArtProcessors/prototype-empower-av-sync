@@ -7,12 +7,10 @@
  * Android connection drops, and that question is only answerable if every peer
  * actually goes through the relay. So:
  *
- *  - The ICE server list is exactly {@link CLOUDFLARE_ICE_URLS}. Trystero
- *    otherwise contributes three Google STUN servers of its own; passing
- *    `iceServers` inside `rtcConfig` replaces that list rather than adding to
- *    it (`@trystero-p2p/core`, `peer.mjs`), which is why the config is built
- *    this way and not via Trystero's `turnConfig` option — that one *appends*
- *    to the defaults.
+ *  - The ICE server list is exactly {@link CLOUDFLARE_ICE_URLS}, and it is the
+ *    only list: `getRtcConfig()` builds the whole `RTCConfiguration` that
+ *    every `RTCPeerConnection` is constructed from, so nothing can contribute
+ *    a STUN server of its own.
  *  - {@link ICE_TRANSPORT_POLICY} is `relay`, so host and server-reflexive
  *    candidates are never gathered. Without it ICE would happily pick a direct
  *    path on the venue LAN and the relay would go untested.
@@ -23,17 +21,13 @@
  * and the lowest-RTT sample wins, so the extra hop is compensated rather than
  * showing up as drift.
  *
- * Matchmaking has no such switch. Peers meet through this app's own signalling
- * relay (`worker-strategy.ts`, backed by the Durable Object in
- * `worker/signal-relay.ts`) and through nothing else. Trystero's public
- * backends were measured against it and lost — they rate-limit, they are
- * roughly twice as slow to peer, and they sit in the critical path of every
- * join and every recovery — but the deciding factor is announce retention:
- * only the app's own relay replays a peer's last announce to whoever
- * subscribes next, which is what lets a `passive` follower activate on connect
- * instead of waiting out the screen's 5.3 s announce interval. A public
- * backend would not be a like-for-like fallback, it would be a quietly slower
- * join path, so the choice is not offered.
+ * Matchmaking has no such switch either. Peers meet through this app's own
+ * signalling relay (`signal-socket.ts`, backed by the Durable Object in
+ * `worker/room-relay.ts`) and through nothing else. That relay knows which
+ * peers are in a room, so discovery is an introduction rather than a search:
+ * the screen is told a follower has arrived and dials it. A third-party
+ * broadcast relay could not offer that at any speed — it cannot address a
+ * peer — which is why the choice is not offered.
  */
 
 /**
