@@ -56,13 +56,23 @@ export interface SourceWord {
   start: number
   /** When it ends, in ms from the top of the media. */
   end: number
-  /** Speaker label, when the pipeline diarised. */
+  /**
+   * Speaker label, when the pipeline diarised. This is the authority on who
+   * said the word: it wins over {@link SourceUtterance.speaker}, which is only
+   * the fallback for a word that carries none.
+   */
   speaker?: string | null
 }
 
-/** One run of speech from a single speaker, as the pipeline emits it. */
+/**
+ * One run of speech as the pipeline emits it.
+ *
+ * Not necessarily one speaker, whatever its own label says. Pipelines group by
+ * turn and then diarise per word, so an utterance labelled `A` routinely holds
+ * a word or two tagged `B` where someone cut in — see {@link buildTranscript}.
+ */
 export interface SourceUtterance {
-  /** Speaker label, when the pipeline diarised. */
+  /** Speaker label for words that carry none of their own. */
   speaker?: string | null
   /** The utterance's words, in order. */
   words: readonly SourceWord[]
@@ -129,21 +139,27 @@ function endsSentence(text: string): boolean {
 }
 
 /**
- * Cut one utterance into displayable lines.
+ * Cut one utterance into displayable lines, one speaker each.
  *
  * Breaks are taken at the first opportunity that keeps a line readable: a
- * pause, a finished sentence, or simply running out of room. Sentence ends
- * only break once there is something worth leaving behind, so "What?" does not
- * become a line of its own between two long ones.
+ * hand-over, a pause, a finished sentence, or simply running out of room.
+ * Sentence ends only break once there is something worth leaving behind, so
+ * "What?" does not become a line of its own between two long ones.
+ *
+ * A hand-over is the one break with no minimum and no threshold to clear.
+ * Every other rule is a judgement about reading; this one is a fact about who
+ * is talking, and a line that spans it would put one person's word in another
+ * person's mouth — "Haircut?" and the reply to it read as a single sentence.
  */
 function linesFromUtterance(
   utterance: SourceUtterance,
   limits: LineLimits,
 ): TranscriptLine[] {
-  const speaker = utterance.speaker ?? ''
+  const fallback = utterance.speaker ?? ''
   const lines: TranscriptLine[] = []
 
   let current: TranscriptWord[] = []
+  let speaker = fallback
   let chars = 0
 
   const flush = () => {
@@ -167,6 +183,7 @@ function linesFromUtterance(
       startMs: source.start,
       endMs: source.end,
     }
+    const voice = source.speaker ?? fallback
     const previous = current[current.length - 1]
 
     if (previous) {
@@ -178,11 +195,14 @@ function linesFromUtterance(
       // below that a break costs more than it buys.
       const settled = endsSentence(previous.text) && current.length >= 2
 
-      if (wouldOverflow || paused || settled) {
+      if (wouldOverflow || paused || settled || voice !== speaker) {
+        // Before the speaker is reassigned, so the line being closed is
+        // attributed to whoever actually said it.
         flush()
       }
     }
 
+    speaker = voice
     chars += current.length === 0 ? word.text.length : word.text.length + 1
     current.push(word)
   })
@@ -195,10 +215,15 @@ function linesFromUtterance(
 /**
  * Build a displayable transcript from a transcription file.
  *
- * Utterances always break — a new speaker is a new line however short the last
- * one was — and each is then cut by {@link LineLimits}. Words with no text and
- * utterances with no words are dropped rather than producing empty lines the
- * view would have to guard against.
+ * Utterances always break, and each is then cut by {@link LineLimits} and by
+ * the word-level speaker labels inside it. Both matter: a pipeline groups
+ * words into an utterance by turn and diarises them one at a time, so an
+ * utterance labelled `A` can hold the `B` who interrupted them. Trusting the
+ * utterance's own label alone is what put "Haircut?" and the answer to it on
+ * one line, under one name.
+ *
+ * Words with no text and utterances with no words are dropped rather than
+ * producing empty lines the view would have to guard against.
  *
  * @param source the pipeline's output
  * @param limits where lines may be broken, defaulting to

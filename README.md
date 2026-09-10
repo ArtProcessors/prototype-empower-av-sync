@@ -351,9 +351,13 @@ Drop the transcription pipeline's JSON into
 folder's `SOURCES` map under the same id the beat carries — two lines, no other
 change. `soh.json` is the shape it expects: utterances of `{ text, start, end }`
 words, in ms on the media's own timeline, each tagged with the `speaker` the
-pipeline diarised it to. Extra fields (confidences, the top-level `text`) are
-carried along and ignored, so the file goes in unedited; a file with no speaker
-labels simply never stacks a second row.
+pipeline diarised it to. The **word's** label is the one that counts — a
+pipeline groups words into an utterance by turn but diarises them one at a
+time, so an utterance labelled `A` routinely holds the `B` who cut in, and a
+line breaks wherever that changes. A word with no label of its own falls back
+to the utterance's, and a file with no labels at all simply never stacks a
+second row. Extra fields (confidences, the top-level `text`) are carried along
+and ignored, so the file goes in unedited.
 
 Each file is a dynamic `import()`, so it lands in its own chunk, is fetched only
 when a listener switches captions on, and never loads on the screen at all. A

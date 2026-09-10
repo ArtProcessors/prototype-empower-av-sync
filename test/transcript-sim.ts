@@ -4,9 +4,11 @@
  *
  * Both halves are pure, and both are easy to get subtly wrong in ways nobody
  * notices in a venue — a dropped word, a line that clears a beat too early, a
- * cursor that goes backwards over a loop. The real SOH file is loaded rather
- * than a fixture, so the checks are against the shape the pipeline actually
- * emits, including its long silences and its mid-word speaker changes.
+ * cursor that goes backwards over a loop. The real files are loaded rather
+ * than fixtures, so the checks are against the shape the pipeline actually
+ * emits: SOH for its long silences and its one late hand-over, Agent 327 for
+ * the interruption sitting inside an utterance labelled with somebody else's
+ * name.
  *
  * Read with `fs` rather than imported, because these run through Node's
  * type-stripping with no bundler and no JSON module resolution.
@@ -26,10 +28,14 @@ import {
 } from '../src/core/transcript.ts'
 import { assert, report } from './assert.ts'
 
-const source = JSON.parse(
-  readFileSync('src/content/transcripts/soh.json', 'utf8'),
-) as TranscriptSource
+/** Read one of the shipped transcripts straight off disk. */
+function shipped(id: string): TranscriptSource {
+  return JSON.parse(
+    readFileSync(`src/content/transcripts/${id}.json`, 'utf8'),
+  ) as TranscriptSource
+}
 
+const source = shipped('soh')
 const transcript = buildTranscript(source)
 const { lines } = transcript
 
@@ -94,7 +100,105 @@ console.log('\n[1] buildTranscript — the real SOH file')
   )
 }
 
-console.log('\n[2] activeLines — before, during and after the words')
+console.log('\n[2] buildTranscript — a speaker changing mid-utterance')
+{
+  // A pipeline groups words into an utterance by turn but diarises them one at
+  // a time, so the utterance's own label is not a promise that one person said
+  // all of it. This is the exact shape that used to come out as a single line
+  // reading "Haircut? But please." under one name.
+  const interrupted = buildTranscript({
+    utterances: [
+      {
+        speaker: 'A',
+        words: [
+          { text: 'Haircut?', start: 55880, end: 56269, speaker: 'B' },
+          { text: 'But', start: 56318, end: 56545, speaker: 'A' },
+          { text: 'please.', start: 56545, end: 56935, speaker: 'A' },
+        ],
+      },
+    ],
+  })
+  const said = (line: { words: readonly { text: string }[] }) =>
+    line.words.map(word => word.text).join(' ')
+
+  assert(
+    interrupted.lines.length === 2,
+    `the hand-over breaks the line (got ${interrupted.lines.length})`,
+  )
+  assert(
+    interrupted.lines[0].speaker === 'B' &&
+      said(interrupted.lines[0]) === 'Haircut?',
+    'the interrupting word is a line of its own, under the name that said it',
+  )
+  assert(
+    interrupted.lines[1].speaker === 'A' &&
+      said(interrupted.lines[1]) === 'But please.',
+    "and the reply keeps the utterance's own label",
+  )
+  assert(
+    activeLines(interrupted, 56400).length === 2,
+    'both are on screen together, a row each',
+  )
+
+  // A break with no minimum: every other rule holds a fragment back until it
+  // is worth stranding, but two voices never share a line however short one
+  // of them is.
+  assert(
+    interrupted.lines[0].words.length === 1,
+    'a one-word interruption still gets its own line',
+  )
+
+  const undiarised = buildTranscript({
+    utterances: [
+      {
+        speaker: 'A',
+        words: [
+          { text: 'One', start: 0, end: 100 },
+          { text: 'two.', start: 100, end: 200 },
+        ],
+      },
+    ],
+  })
+
+  assert(
+    undiarised.lines.length === 1 && undiarised.lines[0].speaker === 'A',
+    "a word carrying no label of its own takes the utterance's",
+  )
+
+  // The same rule over the real files, word by word: whoever the source says
+  // said a word, that is the name on the line it lands in.
+  const attributed = (id: string) => {
+    const file = shipped(id)
+    const voices = (file.utterances ?? []).flatMap(utterance =>
+      utterance.words
+        .filter(word => word.text.trim().length > 0)
+        .map(word => word.speaker ?? utterance.speaker ?? ''),
+    )
+
+    let at = 0
+
+    for (const line of buildTranscript(file).lines) {
+      for (const word of line.words) {
+        if (voices[at] !== line.speaker) {
+          console.log(
+            `    ${id}: "${word.text}" is ${voices[at]}, not ${line.speaker}`,
+          )
+
+          return false
+        }
+
+        at += 1
+      }
+    }
+
+    return at === voices.length
+  }
+
+  assert(attributed('soh'), 'no line in SOH mixes two speakers')
+  assert(attributed('agent327'), 'no line in Agent 327 mixes two speakers')
+}
+
+console.log('\n[3] activeLines — before, during and after the words')
 {
   const first = lines[0]
   const { leadMs, holdMs } = DEFAULT_CURSOR_TIMING
@@ -148,7 +252,7 @@ console.log('\n[2] activeLines — before, during and after the words')
   )
 }
 
-console.log('\n[3] activeLines — one row per speaker, oldest on top')
+console.log('\n[4] activeLines — one row per speaker, oldest on top')
 {
   const { holdMs } = DEFAULT_CURSOR_TIMING
 
@@ -212,7 +316,7 @@ console.log('\n[3] activeLines — one row per speaker, oldest on top')
   assert(oneEach, 'a speaker never holds two rows at once')
 }
 
-console.log('\n[4] activeLines — over a long silence, and over a loop')
+console.log('\n[5] activeLines — over a long silence, and over a loop')
 {
   // The SOH file has minutes of music between utterances; the gap either side
   // of the second line's start is the one this leans on.
@@ -248,7 +352,7 @@ console.log('\n[4] activeLines — over a long silence, and over a loop')
   )
 }
 
-console.log('\n[5] buildTranscript — degenerate input')
+console.log('\n[6] buildTranscript — degenerate input')
 {
   const empty: Transcript = buildTranscript({})
 
