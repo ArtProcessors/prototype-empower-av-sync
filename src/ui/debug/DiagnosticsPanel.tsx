@@ -75,6 +75,9 @@ export function DiagnosticsPanel() {
           {summary.freezes} freezes · {summary.peerLeaves} peer leaves ·{' '}
           {summary.rejoins} rejoins · longest stall{' '}
           {summary.longestStallSec.toFixed(1)}s
+          {/* Only when it has happened: a standing "0 orphans" would train
+              the eye to skip the one number that means a socket got away. */}
+          {summary.orphans > 0 && ` · ${summary.orphans} orphaned sockets`}
         </span>
       </div>
 

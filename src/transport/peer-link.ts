@@ -23,6 +23,7 @@
  * delivers in order, but a candidate generated immediately after an offer can
  * still arrive before the answerer has finished applying it.
  */
+import { recordDiagnostic } from '../diagnostics/session-log'
 import type { PeerRole } from '../../shared/room-protocol'
 
 /** Data-channel label carrying the screen's beats. */
@@ -30,6 +31,19 @@ const BEAT_CHANNEL = 'beat'
 
 /** Data-channel label carrying the clock request and its answer. */
 const RPC_CHANNEL = 'rpc'
+
+/**
+ * How long a link may sit half-built before it is given up on.
+ *
+ * A relay-only connection between two peers that can both reach Cloudflare
+ * settles in about a second; the generous multiple of that is for a phone
+ * whose radio is still waking. What it is really for is the link that never
+ * settles at all — a dial to a peer whose signalling socket has already gone
+ * without the relay noticing. Those used to sit for fifteen to thirty-five
+ * seconds until ICE gave up, and every one of them was a listener on the
+ * screen's peer count that was not in the room.
+ */
+const OPEN_TIMEOUT_MS = 12000
 
 /**
  * What travels inside a relay `signal` frame's opaque `data`.
@@ -131,6 +145,7 @@ export function createPeerLink(options: PeerLinkOptions): PeerLink {
   let opened = false
   let closed = false
   let nextRequestId = 1
+  let openTimer: ReturnType<typeof setTimeout> | undefined
 
   const isOpen = () =>
     beatChannel?.readyState === 'open' && rpcChannel?.readyState === 'open'
@@ -142,6 +157,7 @@ export function createPeerLink(options: PeerLinkOptions): PeerLink {
     }
 
     opened = true
+    clearTimeout(openTimer)
     options.onOpen()
   }
 
@@ -159,6 +175,7 @@ export function createPeerLink(options: PeerLinkOptions): PeerLink {
     }
 
     closed = true
+    clearTimeout(openTimer)
     fail(new Error('peer link closed'))
 
     // Channels first: closing the connection alone leaves them in a state
@@ -277,6 +294,21 @@ export function createPeerLink(options: PeerLinkOptions): PeerLink {
       checkOpen()
     })
   }
+
+  // Armed last, so it covers the whole of negotiation rather than starting
+  // part-way through it.
+  openTimer = setTimeout(() => {
+    if (opened || closed) {
+      return
+    }
+
+    recordDiagnostic(
+      'peer',
+      `${options.peerId.slice(0, 6)} never opened in ` +
+        `${(OPEN_TIMEOUT_MS / 1000).toFixed(0)}s — dropping`,
+    )
+    teardown(true)
+  }, OPEN_TIMEOUT_MS)
 
   return {
     peerId: options.peerId,

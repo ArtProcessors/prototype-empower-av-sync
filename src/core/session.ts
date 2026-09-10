@@ -315,6 +315,21 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
       const rejoined = await joinAsFollower(code)
 
+      // The room can be left while a rejoin is in flight — `leave()` does not
+      // wait for one. Attaching now would resurrect a session the listener has
+      // stopped, and leave its signalling socket re-joining the room for as
+      // long as the page is open.
+      if (room !== code) {
+        await rejoined.leave()
+
+        recordDiagnostic(
+          'transport',
+          `rejoin discarded — the room was left while it was in flight`,
+        )
+
+        return
+      }
+
       reseedFrom(rejoined)
       attachTransport(rejoined)
 

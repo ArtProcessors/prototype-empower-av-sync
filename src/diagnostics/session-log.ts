@@ -57,6 +57,8 @@ export type DiagnosticTag =
   | 'peer-leave'
   /** The follower started rebuilding its transport. */
   | 'transport-rejoin'
+  /** A signalling connection was found alive with no owner, and released. */
+  | 'signal-orphan'
   /** A gap between liveness-timer ticks. */
   | 'timer-stall'
 

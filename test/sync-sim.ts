@@ -251,6 +251,7 @@ console.log('\n[9] diagnostics summary (tags, and the wording fallback)')
   ])
 
   assert(tagged.freezes === 1, 'counts a tagged freeze')
+  assert(tagged.orphans === 0, 'a clean run reports no orphaned sockets')
   assert(tagged.peerLeaves === 2, 'counts tagged peer leaves')
   assert(tagged.rejoins === 1, 'counts a tagged rejoin')
   assert(close(tagged.longestStallSec, 3.4), 'keeps the longest tagged stall')
@@ -294,6 +295,30 @@ console.log('\n[9] diagnostics summary (tags, and the wording fallback)')
   assert(
     summariseDiagnostics([]).longestStallSec === 0,
     'an empty log summarises as zeroes',
+  )
+
+  // A socket released without an owner is the signature of the peer-count
+  // stacking, so it gets its own number rather than a line to scroll for.
+  const orphaned = summariseDiagnostics([
+    at({
+      category: 'net',
+      message: '[sig 3] releasing orphaned connection [sig 1]',
+      tag: 'signal-orphan',
+    }),
+    at({
+      category: 'net',
+      message: '[sig 3] releasing orphaned connection [sig 2]',
+      tag: 'signal-orphan',
+    }),
+    at({ category: 'net', message: '[sig 3] reconnected — rejoining' }),
+  ])
+
+  assert(orphaned.orphans === 2, 'counts each orphaned socket released')
+  assert(
+    summariseDiagnostics([
+      at({ category: 'net', message: 'releasing orphaned connection' }),
+    ]).orphans === 0,
+    'and never guesses one from wording alone',
   )
 }
 

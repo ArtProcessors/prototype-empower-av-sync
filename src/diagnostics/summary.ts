@@ -24,6 +24,14 @@ export interface DiagnosticSummary {
   peerLeaves: number
   /** Times the follower rebuilt its transport. */
   rejoins: number
+  /**
+   * Signalling connections found alive with no owner, and released.
+   *
+   * Any number above zero means something dropped a socket without closing
+   * it. Each one would otherwise have kept re-joining the room under a fresh
+   * identity, showing up on the screen as a listener that is not there.
+   */
+  orphans: number
 }
 
 /** Reduce a log to its headline numbers. */
@@ -34,6 +42,7 @@ export function summariseDiagnostics(
   let longestStallSec = 0
   let peerLeaves = 0
   let rejoins = 0
+  let orphans = 0
 
   for (const event of events) {
     const untagged = event.tag === undefined
@@ -67,6 +76,12 @@ export function summariseDiagnostics(
       rejoins += 1
     }
 
+    // No wording fallback: this event has never existed untagged, so matching
+    // on the message could only ever produce a false positive.
+    if (event.tag === 'signal-orphan') {
+      orphans += 1
+    }
+
     if (event.tag === 'timer-stall') {
       longestStallSec = Math.max(longestStallSec, event.value ?? 0)
     } else if (untagged && event.category === 'timer') {
@@ -76,5 +91,5 @@ export function summariseDiagnostics(
     }
   }
 
-  return { freezes, longestStallSec, peerLeaves, rejoins }
+  return { freezes, longestStallSec, peerLeaves, rejoins, orphans }
 }
