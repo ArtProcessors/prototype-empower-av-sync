@@ -268,13 +268,13 @@
 .ghostOn {
   border-color: #55555c;
   color: var(--colour-text);
+  border-color: var(--colour-good);
 }
 
 /* Promoted once a problem has stopped looking transient. Applied alongside
    `.ghost`, so it has to come after it to win on source order. */
 .ghostUrgent {
-  border-color: var(--colour-brand);
-  background: var(--colour-brand);
+  border-color: var(--colour-warn);
   color: #fff;
 }
 

@@ -111,6 +111,43 @@ export interface SyncController {
   leave(): Promise<void>
 }
 
+/**
+ * Rooms this page has already wrapped in a controller.
+ *
+ * Trystero caches a joined room per `appId`/`roomCode` and hands the very same
+ * object back to a second `joinRoom` for the same code. It forgets a room only
+ * when that room's `leave()` runs to completion — and `leave()` rejects when a
+ * peer's data channel has already closed, because Trystero sends its farewell
+ * through an unguarded `RTCDataChannel.send`. Waking from sleep is precisely
+ * when a channel is closed and the room has not yet noticed.
+ *
+ * A rejoin after that looks entirely healthy from here: `joinRoom` returns, and
+ * `makeAction` hands back the existing actions rather than complaining. What it
+ * cannot do is peer, because the room it returned has already said goodbye —
+ * so the follower sat on "Reconnecting…" for the rest of the page's life while
+ * the log claimed a fresh room every time. Recognising the recycled object is
+ * the only way to tell the two apart.
+ */
+const wrappedRooms = new WeakSet<Room>()
+
+/**
+ * Thrown when {@link joinRoom} hands back a room this page has already used,
+ * which means a previous `leave()` did not finish. Recoverable only by a later
+ * leave succeeding — once the dead peers are evicted, the room is released and
+ * the next rejoin is genuinely fresh — or, failing that, by a reload.
+ */
+export class RecycledRoomError extends Error {
+  /** @param roomCode the room that could not be rejoined */
+  constructor(roomCode: string) {
+    super(
+      `signalling room ${roomCode} was recycled after a leave that never ` +
+        'completed, so this join could never peer',
+    )
+
+    this.name = 'RecycledRoomError'
+  }
+}
+
 /** Join `roomCode` as the leader, broadcasting beats for followers to lock to. */
 export async function startScreen(roomCode: string): Promise<SyncController> {
   return create(roomCode, 'screen')
@@ -147,6 +184,14 @@ async function create(roomCode: string, role: Role): Promise<SyncController> {
     },
     roomCode,
   )
+
+  // Before anything is hung off it: a recycled room is not a session, and
+  // wiring beats and timers onto one only hides that from the caller.
+  if (wrappedRooms.has(room)) {
+    throw new RecycledRoomError(roomCode)
+  }
+
+  wrappedRooms.add(room)
 
   let state: SyncState = {
     role,

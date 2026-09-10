@@ -252,7 +252,11 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
       stopWatchdog = startTransportWatchdog({
         transport: () => controller,
         rejoins,
-        reconnect: () => void reconnectTransport(),
+        // Nothing to await or catch: `reconnectTransport` reports its own
+        // failures to the diagnostics log and resolves either way.
+        reconnect: () => {
+          reconnectTransport()
+        },
       })
     }
 
@@ -296,8 +300,20 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
     try {
       // Leave first — rejoining the same room while the dead session lingers
-      // can collide.
-      await controller?.leave().catch(() => {})
+      // can collide. A rejection here used to be swallowed, and it is the one
+      // line worth having: the transport only forgets a room whose `leave()`
+      // finished, so a leave that failed is what turns the next rejoin into a
+      // `RecycledRoomError`. Not rethrown — the rejoin below is still worth
+      // attempting, and on the attempt after this one it usually works, once
+      // the dead peers have been evicted.
+      await controller?.leave().catch((caught: unknown) => {
+        recordDiagnostic(
+          'transport',
+          'leave FAILED before rejoin — ' +
+            `${caught instanceof Error ? caught.message : String(caught)}`,
+          { tag: 'transport-rejoin' },
+        )
+      })
 
       const rejoined = await joinAsFollower(code)
 
@@ -357,6 +373,13 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
     audio.exitBackground()
     audio.resume()
     audio.resync()
+
+    // A wake starts the backoff over. Whatever failures stand behind it were
+    // spent against a radio the device had switched off, and carrying them
+    // into a waking session only makes someone who is now looking at their
+    // phone wait out a doubled cooldown — up to a full minute — for a rejoin
+    // that would have worked on the first try.
+    rejoins.failures = 0
 
     const syncState = controller.getState()
     syncMarker.epoch = syncState.syncEpoch
