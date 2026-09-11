@@ -1,14 +1,22 @@
+// First of everything, deliberately: Sentry patches `fetch`,
+// `XMLHttpRequest` and the global error handlers on init, and only code that
+// runs after that patch is visible to it. Nothing may be imported above this.
+import './instrument'
+
+import * as Sentry from '@sentry/react'
 import { StrictMode, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// First, deliberately: Vite emits CSS in module-graph order, and the reset and
-// element defaults are the layer every CSS Module is written to sit on top of.
+// First of the app's own imports, deliberately: Vite emits CSS in
+// module-graph order, and the reset and element defaults are the layer every
+// CSS Module is written to sit on top of.
 import './global.css'
 import { App } from './ui/App'
 import { DemoScreenGallery } from './ui/demo/DemoScreenGallery'
 import { DemoStatusGallery } from './ui/demo/DemoStatusGallery'
 import { DemoTranscriptGallery } from './ui/demo/DemoTranscriptGallery'
 import { currentLaunchIntent } from './ui/launch-intent'
+import { RenderFailure } from './ui/RenderFailure'
 
 // Service worker registration is production-only; use
 // `yarn build && yarn preview` to exercise it.
@@ -27,7 +35,7 @@ if (import.meta.env.PROD) {
  * the screen's `<video>` element and everything it drags in — for a page of
  * states that never joins a room would be waste with side effects.
  */
-function pageForLaunch(): ReactElement {
+function PageForLaunch(): ReactElement {
   switch (currentLaunchIntent().page) {
     case 'rings':
       return <DemoStatusGallery />
@@ -41,5 +49,9 @@ function pageForLaunch(): ReactElement {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{pageForLaunch()}</StrictMode>,
+  <StrictMode>
+    <Sentry.ErrorBoundary fallback={<RenderFailure />}>
+      <PageForLaunch />
+    </Sentry.ErrorBoundary>
+  </StrictMode>,
 )

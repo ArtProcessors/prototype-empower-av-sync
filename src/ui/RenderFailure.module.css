@@ -1,0 +1,65 @@
+/*
+ * The crash screen's own styles.
+ *
+ * Deliberately self-contained, and deliberately not `demo.module.css`. This
+ * view renders precisely when something else has failed, so it leans on
+ * nothing but the palette in `src/global.css` — no session, no shared demo
+ * vocabulary, no state. `demo.module.css` has a `.shell` that looks much like
+ * this one, but borrowing it would tie the crash screen to the half of the
+ * app most likely to be what crashed.
+ *
+ * Only `:root` tokens for colour, for the reason global.css gives: a literal
+ * belongs to the single module that needs it, and every colour here is one
+ * more than one module already wants. The page's own `body` background shows
+ * through rather than being repainted.
+ */
+.shell {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  min-block-size: 100vh;
+  min-block-size: 100dvh;
+  padding-inline: max(24px, env(safe-area-inset-left))
+    max(24px, env(safe-area-inset-right));
+  padding-block: max(24px, env(safe-area-inset-top))
+    max(24px, env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.detail {
+  margin: 0;
+  max-inline-size: 22rem;
+  color: var(--colour-text-muted);
+  text-wrap: pretty;
+}
+
+/*
+ * Quiet, in the shape the demo's other secondary controls use: a pill with a
+ * target content can grow but not shrink (WCAG 2.5.8).
+ */
+.reload {
+  margin: 6px 0 0;
+  padding: 10px 18px;
+  min-block-size: 44px;
+  border: 1px solid var(--colour-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--colour-text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.reload:hover {
+  color: var(--colour-text);
+}
+.reload:focus-visible {
+  outline: 2px solid var(--colour-info);
+  outline-offset: 2px;
+}

@@ -23,6 +23,7 @@
     "deploy": "yarn build && wrangler deploy"
   },
   "dependencies": {
+    "@sentry/react": "~10.74.0",
     "mp4box": "~2.4.1",
     "qrcode": "~1.5.4",
     "react": "^18.3.1",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "~5.20260826.1",
+    "@sentry/vite-plugin": "~5.4.0",
     "@types/qrcode": "~1.5.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
