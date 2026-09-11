@@ -23,7 +23,7 @@ const apiProxy = {
 }
 
 // Sibling of empower-peer-to-peer: Vite 7 + React + vite-plugin-pwa (injectManifest,
-// hand-written SW). Offline-first bundling of the looping video + soundtrack.
+// hand-written SW). Bundles the looping test video + the soundtrack primer.
 export default defineConfig({
   base: '/',
   plugins: [
@@ -37,10 +37,14 @@ export default defineConfig({
       injectManifest: {
         globPatterns: [
           '**/*.{js,css,html,webmanifest}',
-          'static/**/*.{svg,png,jpg,jpeg,gif,webp,ttf,woff2,mp3,m4a,mp4,ico}',
+          // Audio but not video. The only media that has to be precached is
+          // the primer (`src/content/primer.m4a`), which a follower needs
+          // already local inside the unlock gesture. Video is either remote,
+          // or — in `screen.mp4`'s case — wanted only by an instrumented page,
+          // and neither should be on a visitor's first load. Both are still
+          // runtime-cached by the media route in `src/service-worker/sw.ts`.
+          'static/**/*.{svg,png,jpg,jpeg,gif,webp,ttf,woff2,mp3,m4a,ico}',
         ],
-        // screen.mp4 can be a few MB; keep the precache ceiling generous.
-        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
       },
       manifest: {
         name: 'Empower — A/V Sync (spike)',

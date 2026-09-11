@@ -16,7 +16,8 @@ dev-dist
 *.log
 
 # Large local-only media (real content). Regenerate from source with ffmpeg — see README.
-# The small synthetic test clip in src/content/ IS committed (offline default).
+# The two small files in src/content/ ARE committed: primer.m4a is load-bearing (every
+# follower loads it inside the unlock gesture) and screen.mp4 is the diagnostic clip.
 public/media/
 
 # Yarn 4 (node-modules linker)

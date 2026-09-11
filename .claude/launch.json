@@ -12,6 +12,12 @@
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["worker:dev"],
       "port": 8787
+    },
+    {
+      "name": "preview",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["preview"],
+      "port": 4273
     }
   ]
 }

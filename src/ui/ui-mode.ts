@@ -4,9 +4,10 @@
  * There is one set of views. `?debug=1` does not select a second UI — it used
  * to, and keeping two sets of views honest about the same session turned out
  * to be work nobody was doing — it adds `ui/debug/DebugOverlay` over the top of
- * the one that exists, plus the two things an overlay cannot do for itself:
- * native controls on the screen's `<video>`, and the picker staying on the
- * start screen when the link already named a video.
+ * the one that exists, plus the things an overlay cannot do for itself: native
+ * controls on the screen's `<video>`, the picker staying on the start screen
+ * when the link already named a video, and the diagnostic clips being in the
+ * page's catalogue at all (see `content/index.ts`).
  *
  * The choice is a page-load-time reading of the URL rather than session state,
  * because both of those are spent before the first render — which is also what
@@ -19,7 +20,11 @@
  *
  * The mode has to survive the join link as well: a QR scanned off a screen
  * that is being debugged should land the phone in the same instrumented page.
- * See {@link withUiMode}, which `DemoScreenView` wraps its join URL in.
+ * That is a correctness requirement, not a convenience, since the diagnostic
+ * clips are only in an instrumented page's catalogue: a follower that lost the
+ * flag could not resolve a beat naming one, and would quietly play the wrong
+ * soundtrack. See {@link withUiMode}, which `DemoScreenView` wraps its join
+ * URL in.
  */
 
 /** Whether the debug instruments are up over the app's views. */

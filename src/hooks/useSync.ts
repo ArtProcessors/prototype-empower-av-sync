@@ -8,7 +8,7 @@
  */
 import { useEffect, useSyncExternalStore } from 'react'
 
-import { CONTENT_CATALOGUE } from '../content'
+import type { MediaCatalogue } from '../core/media-catalogue'
 import {
   createDomScreenVideo,
   type DomScreenVideoOptions,
@@ -26,6 +26,12 @@ import type { SyncSessionState } from '../core/session-state'
  * {@link createSyncSession} directly, handing it its own `ScreenVideoOutput`.
  */
 export interface UseSyncOptions {
+  /**
+   * What this page can play. Passed in rather than imported here because the
+   * answer depends on how the page is being run — an instrumented page gets
+   * the diagnostic clips as well — and that is the caller's to know.
+   */
+  media: MediaCatalogue
   /**
    * How to set up the persistent `<video>` the screen plays through. The one
    * hook a UI needs to make that element its own — see
@@ -71,7 +77,7 @@ function sessionForPage(options: UseSyncOptions) {
 
     page = {
       session: createSyncSession({
-        media: CONTENT_CATALOGUE,
+        media: options.media,
         screenVideo: video,
         nowPlaying: { title: 'Live audio', artist: 'Empower A/V sync' },
       }),
@@ -93,7 +99,7 @@ function sessionForPage(options: UseSyncOptions) {
  *
  * @param options how this host wants the page's session built
  */
-export function useSync(options: UseSyncOptions = {}): SyncBinding {
+export function useSync(options: UseSyncOptions): SyncBinding {
   const { session, video } = sessionForPage(options)
   // `subscribe` and `getState` are properties of one long-lived object, so
   // their identities never change and React never re-subscribes. `getState`

@@ -36,7 +36,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { CONTENT_CATALOGUE } from '../../content'
+import { contentCatalogue } from '../../content'
 import { mediaById } from '../../core/media-catalogue'
 import {
   createDomScreenVideo,
@@ -47,6 +47,7 @@ import type { SyncSessionState } from '../../core/session-state'
 import type { AudioWaveform } from '../../media/audio-waveform'
 import type { SyncState } from '../../transport/sync-controller'
 import { classNames } from '../class-names'
+import { currentLaunchIntent } from '../launch-intent'
 import type { LaunchVideoState } from '../useLaunchVideo'
 import styles from './DemoScreenGallery.module.css'
 import { DemoScreenStart } from './DemoScreenStart'
@@ -78,6 +79,15 @@ const ROOM_OPEN_PRESETS = [
   { id: 'fast', label: 'Fast room', ms: 300 },
   { id: 'slow', label: 'Slow room', ms: 2600 },
 ] as const
+
+/**
+ * What the picker in a setup scenario lists.
+ *
+ * Read from this page's own URL, the same way the app reads it, so
+ * `/dev/screens?debug=1` shows the longer list an instrumented screen offers
+ * and a bare `/dev/screens` shows the one a visitor's link would.
+ */
+const CATALOGUE = contentCatalogue(currentLaunchIntent().ui === 'debug')
 
 /** Which of the screen's two views a scenario renders. */
 type ScreenSurface = 'setup' | 'live'
@@ -177,8 +187,8 @@ const SCENARIOS: readonly ScreenScenario[] = [
       'suppressed and the picker comes back as the way on.',
     launch: {
       error:
-        'This link asks for a video called “matinee”, which this build does ' +
-        'not have.',
+        'This link asks for a video called “matinee”, which this page ' +
+        'cannot play.',
       canSelectVideo: true,
     },
   },
@@ -203,8 +213,8 @@ const SCENARIOS: readonly ScreenScenario[] = [
       'panels stack, and the tallest the start screen gets.',
     launch: {
       error:
-        'This link asks for a video called “matinee”, which this build does ' +
-        'not have.',
+        'This link asks for a video called “matinee”, which this page ' +
+        'cannot play.',
       canSelectVideo: true,
     },
     patch: { error: REFUSED_MESSAGE },
@@ -281,9 +291,9 @@ function createGallerySession(actions: GallerySessionActions): SyncSession {
   const state: SyncSessionState = {
     ...BEFORE_START,
     media: {
-      options: CONTENT_CATALOGUE.options,
-      selectedId: CONTENT_CATALOGUE.defaultId,
-      selected: mediaById(CONTENT_CATALOGUE, CONTENT_CATALOGUE.defaultId),
+      options: CATALOGUE.options,
+      selectedId: CATALOGUE.defaultId,
+      selected: mediaById(CATALOGUE, CATALOGUE.defaultId),
     },
   }
 
@@ -314,7 +324,7 @@ function initialScenarioId(): string {
 /** Every state the screen can be in, one at a time. */
 export function DemoScreenGallery() {
   const [scenarioId, setScenarioId] = useState(initialScenarioId)
-  const [selectedId, setSelectedId] = useState(CONTENT_CATALOGUE.defaultId)
+  const [selectedId, setSelectedId] = useState(CATALOGUE.defaultId)
   const [roomOpenMs, setRoomOpenMs] = useState<number>(ROOM_OPEN_PRESETS[0].ms)
   const [held, setHeld] = useState(false)
   const [leading, setLeading] = useState(false)
@@ -414,9 +424,9 @@ export function DemoScreenGallery() {
     ...BEFORE_START,
     ...scenario.patch,
     media: {
-      options: CONTENT_CATALOGUE.options,
+      options: CATALOGUE.options,
       selectedId: shownVideoId,
-      selected: mediaById(CONTENT_CATALOGUE, shownVideoId),
+      selected: mediaById(CATALOGUE, shownVideoId),
     },
   }
 
@@ -432,7 +442,7 @@ export function DemoScreenGallery() {
       // refusal here is the browser's, and there is nowhere in a gallery to
       // report it.
       galleryVideo()
-        .play(mediaById(CONTENT_CATALOGUE, shownVideoId))
+        .play(mediaById(CATALOGUE, shownVideoId))
         .catch(() => {})
     }
   }, [showsLive, shownVideoId])

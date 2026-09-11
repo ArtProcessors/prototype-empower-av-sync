@@ -1,3 +1,4 @@
+import { contentCatalogue } from '../content'
 import type { DomScreenVideoOptions } from '../core/screen-output'
 import { useSync } from '../hooks/useSync'
 import { DebugOverlay } from './debug/DebugOverlay'
@@ -42,9 +43,21 @@ const SCREEN_VIDEO: DomScreenVideoOptions = DEBUG
     }
   : {}
 
+/**
+ * What this page can play.
+ *
+ * The same decision as {@link SCREEN_VIDEO} and made for the same reason: it
+ * depends on how the page is being run, which is this module's knowledge and
+ * nothing below it. An instrumented page gets the catalogue's diagnostic clips
+ * in the picker; a plain one does not have them at all, which is also why the
+ * QR carries the mode — see `content/index.ts`.
+ */
+const CATALOGUE = contentCatalogue(DEBUG)
+
 /** Root view: the app, plus the debug instruments when the URL asks for them. */
 export function App() {
   const { state, session, mountScreenVideo } = useSync({
+    media: CATALOGUE,
     screenVideo: SCREEN_VIDEO,
   })
 

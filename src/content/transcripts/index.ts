@@ -10,7 +10,7 @@
  * Each entry is a dynamic `import()`, so the file lands in its own chunk and
  * is fetched the first time a listener asks for captions — not on start-up,
  * and never on the screen. The chunk is precached with the rest of the build,
- * so a transcript that has been fetched once is available offline.
+ * so a transcript that has been fetched once is a cache hit from then on.
  *
  * Adding one is two lines: drop the pipeline's JSON in beside this file and
  * name it here under the same id the beat carries.

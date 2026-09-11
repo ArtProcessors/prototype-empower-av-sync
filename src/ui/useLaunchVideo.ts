@@ -22,8 +22,10 @@ export interface LaunchVideoState {
   /**
    * Why the URL's video could not be honoured, or `null`. Surfaced rather
    * than swallowed: `selectVideo` drops an unknown id by design, which on an
-   * operator's mistyped link would quietly put the 20-second test clip on a
-   * wall.
+   * operator's mistyped link would quietly put the catalogue's default on a
+   * wall instead. "Unknown" is per page, not per build — a diagnostic clip is
+   * not in a plain page's catalogue (see `content/index.ts`), which is why
+   * the wording blames the page rather than the build.
    */
   error: string | null
   /**
@@ -86,8 +88,8 @@ export function useLaunchVideo({
     // named something and got it wrong.
     error: known
       ? null
-      : `This link asks for a video called “${requested}”, which this build ` +
-        `does not have.`,
+      : `This link asks for a video called “${requested}”, which this page ` +
+        `cannot play.`,
     canSelectVideo: intent.ui === 'debug' || requested === null || !known,
   }
 }

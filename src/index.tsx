@@ -11,7 +11,7 @@ import { DemoTranscriptGallery } from './ui/demo/DemoTranscriptGallery'
 import { currentLaunchIntent } from './ui/launch-intent'
 
 // Service worker registration is production-only; use
-// `yarn build && yarn preview` for offline testing.
+// `yarn build && yarn preview` to exercise it.
 if (import.meta.env.PROD) {
   import('./service-worker-registration').then(module =>
     module.registerServiceWorker(),

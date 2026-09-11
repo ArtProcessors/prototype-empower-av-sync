@@ -13,7 +13,7 @@ Chrome, with no per-device calibration step.
 > [FEASIBILITY.md](FEASIBILITY.md). This file is for getting the thing running
 > and knowing your way around it.
 
-Sibling of `empower-peer-to-peer` — it reuses that project's PWA/offline
+Sibling of `empower-peer-to-peer` — it reuses that project's PWA and caching
 patterns, but with a continuous sync engine in place of the gallery's event
 model, and a transport built directly on `RTCPeerConnection`.
 
@@ -77,7 +77,7 @@ as they are in production.
 | `yarn dev`        | Dev server on :3100 (HMR, no service worker) — **open this one**  |
 | `yarn worker:dev` | Signalling + TURN Worker on :8787, proxied from Vite              |
 | `yarn build`      | Type-checks app + Worker + sims, then production build (incl. SW) |
-| `yarn preview`    | Prod build on :4273 (SW active — offline testing)                 |
+| `yarn preview`    | Prod build on :4273 (SW active — caching behaviour)               |
 | `yarn sim`        | Unit checks: sync math, session policy, transcript model          |
 | `yarn format`     | Prettier over the repo (`format:check` to verify)                 |
 | `yarn deploy`     | Build, then deploy Worker + SPA to Cloudflare                     |
@@ -87,13 +87,13 @@ as they are in production.
 | Mode                                               | Use it for                                                             |
 | -------------------------------------------------- | ---------------------------------------------------------------------- |
 | `yarn dev` + `yarn worker:dev`, open **:3100**     | Everyday work. HMR, no service worker in the way.                      |
-| `yarn preview` + `yarn worker:dev`, open **:4273** | Offline / service-worker behaviour.                                    |
+| `yarn preview` + `yarn worker:dev`, open **:4273** | Service-worker and caching behaviour.                                  |
 | `yarn build` + `yarn worker:dev`, open **:8787**   | Production topology: one origin serving app, `/signal` and `/api/ice`. |
 
 ## Try it
 
 1. **On the display**, open the app, pick a video and tap **Start** — or open
-   `/?video=test&autostart=1`, which does both. The video goes full-bleed and a
+   `/?video=agent327&autostart=1`, which does both. The video goes full-bleed and a
    QR card sits in the bottom-right.
 2. **On a phone**, scan the QR and tap **Listen** (the tap is what unlocks audio
    on iOS). Put on headphones. The ring reports what the session is doing —
@@ -174,9 +174,22 @@ marked with the subtitle dash. Offered only for media that has one
 ([src/content/transcripts/](src/content/transcripts/)); see
 [Content & adding your own](#content--adding-your-own).
 
-**PWA / offline** — the app shell and the `test` clip are precached, so they work
-fully offline after one load. Long-form content is **not** offline: its audio is
-range-fetched throughout playback.
+**PWA / caching** — the app shell is precached, along with exactly one media
+file: `content/primer.m4a`, which a follower has to have locally _before_ the
+unlock gesture points its `<audio>` element at it. `screen.mp4` is runtime-cached
+by a hand-written handler instead, so a visitor who never raises the instruments
+doesn't pay for it on first load ([sw.ts](src/service-worker/sw.ts)).
+
+Not an offline mode, and not sold as one: a screen cannot open a room and a
+follower cannot join one without signalling and TURN, so a page with no network
+has nothing to be in sync with.
+
+The remote clips are **not** meaningfully cached, and that is deliberate. A media
+element always sends `Range` and gets a `206`, which Workbox will not store — so
+a plain `CacheFirst` caches nothing for video at all. The bundled files get a
+handler that fetches the whole file once and slices later ranges out of it;
+doing that to `sync45` would mean putting ~860 MB into Cache Storage, so the
+remote clips go to the network and stay there.
 
 **Headless core** — `src/core` composes the whole session with no React and no
 JSX; `src/ui` is one host on top of it. See [Reusing the core](#reusing-the-core).
@@ -208,15 +221,15 @@ them needs no config — the Worker (`not_found_handling`), the service worker's
 Everything in the query string configures the page the path chose. Flags follow
 the `?debug=` reading: present and not `0`/`false` means on.
 
-| Parameter        | Effect                                                                         |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `?debug=1`       | Raise the debug overlay over the normal views                                  |
-| `?video=<id>`    | Lead with that video (`test`, `agent327`, `soh`, `sync45`) and drop the picker |
-| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)   |
-| `?room=<code>`   | Join as a listener — what the screen's QR carries                              |
-| `?runway=<sec>`  | Background free-run runway (default 180)                                       |
-| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                           |
-| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                           |
+| Parameter        | Effect                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `?debug=1`       | Raise the debug overlay over the normal views                                                     |
+| `?video=<id>`    | Lead with that video (`agent327`, `soh`; `test`/`sync45` need `?debug=1` too) and drop the picker |
+| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                      |
+| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                 |
+| `?runway=<sec>`  | Background free-run runway (default 180)                                                          |
+| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                              |
+| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                              |
 
 **Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins even when
 blank (a listener's audio is not something a URL can unlock), then `?autostart=`
@@ -235,10 +248,11 @@ unattended was set up to be the screen.
 There is **one set of views** (`src/ui/demo/`). `?debug=1` does not swap them for
 a second set — it hangs [DebugOverlay](src/ui/debug/DebugOverlay.tsx) over the top
 of whatever is showing, as a fixed panel in the top-left that collapses to a chip
-(which is how it starts on a phone). Three things it can't do from out there are
+(which is how it starts on a phone). Four things it can't do from out there are
 settled where the launch intent is already read: native `<video>` controls on the
-screen, the picker staying put when the link named a video, and the `&debug=1`
-the QR carries. Nothing in `src/core` knows the overlay exists.
+screen, the picker staying put when the link named a video, the diagnostic clips
+being in the catalogue at all (see [Content](#content--adding-your-own)), and the
+`&debug=1` the QR carries. Nothing in `src/core` knows the overlay exists.
 
 **Sync-state rows** — `phase`, `role`, `room`, `peers`, `signalling`, `media`,
 `clock offset`, `rtt`, `drift`, `mode`, `playbackRate`, `engine`, `audio out`,
@@ -303,20 +317,32 @@ sleep log first**, so step 3 has something to compare against.
    `rate ≈ 1`, still tracking across a loop wrap; listener count is right.
 6. **Leave:** stop from both roles → listener lands on its Ready ring, screen on
    Start. Reload after a deliberate leave: the room is **not** offered again.
-7. **Offline:** `yarn build && yarn preview`, load once, go offline, reload — app
-   and `test` clip play from cache.
+7. **Service worker:** `yarn build && yarn preview`, load once, reload — the
+   shell comes from cache and the long-form media isn't re-fetched (check the
+   Network panel). Joining still needs the network, so there is no offline run
+   to test.
 
 ## Content & adding your own
 
 The leader picks the video; the choice rides every beat as `mediaId` so followers
-load the matching audio. Four options ship ([src/content/index.ts](src/content/index.ts)):
+load the matching audio. Four options ship ([src/content/index.ts](src/content/index.ts)),
+in two lists:
 
-| id         | Video (screen)                         | Audio (followers)               | Delivery                                 |
-| ---------- | -------------------------------------- | ------------------------------- | ---------------------------------------- |
-| `test`     | synthetic clip, flash+click cues (20s) | `soundtrack.m4a`                | committed, **precached** (fully offline) |
-| `agent327` | `agent-327.mp4` (~38 MB, 3m52s)        | `agent-327.m4a` (~3.6 MB)       | remote, `streaming: true`                |
-| `soh`      | `soh.mp4` (~127 MB)                    | `soh.m4a` (~14 MB)              | remote, `streaming: true`                |
-| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, `streaming: true`                |
+| id         | Video (screen)                         | Audio (followers)               | Delivery                                             | List                  |
+| ---------- | -------------------------------------- | ------------------------------- | ---------------------------------------------------- | --------------------- |
+| `agent327` | `agent-327.mp4` (~38 MB, 3m52s)        | `agent-327.m4a` (~3.6 MB)       | remote, `streaming: true`                            | content (**default**) |
+| `soh`      | `soh.mp4` (~127 MB)                    | `soh.m4a` (~14 MB)              | remote, `streaming: true`                            | content               |
+| `test`     | synthetic clip, flash+click cues (20s) | `primer.m4a`                    | committed; audio **precached**, video runtime-cached | diagnostic            |
+| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, `streaming: true`                            | diagnostic            |
+
+`CONTENT_VIDEOS` is what a room is put in front of. `DIAGNOSTIC_VIDEOS` are
+instruments, and `contentCatalogue(withDiagnostics)` appends them only for a
+page running `?debug=1` — so a plain page does not merely hide them, it does not
+have them, and `?video=test` on one is an unknown id. That is why the join QR
+carries the mode ([ui-mode.ts](src/ui/ui-mode.ts)): a phone scanning a screen
+under test lands instrumented too, and so has the clip the beats are about to
+name. The choice is made once in [App.tsx](src/ui/App.tsx), beside the other
+"how is this page being run" decision.
 
 **Followers only ever download the audio** — ~14 MB against the screen's 127 MB
 for `soh`. With `streaming: true` a follower doesn't even fetch the whole
@@ -423,17 +449,17 @@ content from remote hosting.
 
 ## Where things live
 
-| Layer                   | What's in it                                                                                                                                                                           |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/`             | The session: `createSyncSession()` composes transport, corrector, watchdog, wake lock and screen video into one snapshot store. No React. `core/index.ts` is the whole public surface. |
-| `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math                                                                                                                                        |
-| `src/transport/`        | Signalling socket, WebRTC negotiation, beats, clock RPC, ICE config                                                                                                                    |
-| `src/media/`            | The follower's corrector and its three output engines                                                                                                                                  |
-| `src/diagnostics/`      | The session log and the monitors that feed it                                                                                                                                          |
-| `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it. `transcripts/` holds the word-timed files, lazily imported                                             |
-| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the snapshot; `ui/demo/` is the views, `ui/debug/` the overlay                                                                               |
-| `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig                                                                                                          |
-| `worker/`               | Worker entry (`/api/ice`, `/api/ping`, SPA) and the `SignalRelay` Durable Object                                                                                                       |
+| Layer                   | What's in it                                                                                                                                                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`             | The session: `createSyncSession()` composes transport, corrector, watchdog, wake lock and screen video into one snapshot store. No React. `core/index.ts` is the whole public surface.                               |
+| `src/sync/sync-math.ts` | Pure, unit-tested offset/target/drift/rate math                                                                                                                                                                      |
+| `src/transport/`        | Signalling socket, WebRTC negotiation, beats, clock RPC, ICE config                                                                                                                                                  |
+| `src/media/`            | The follower's corrector and its three output engines                                                                                                                                                                |
+| `src/diagnostics/`      | The session log and the monitors that feed it                                                                                                                                                                        |
+| `src/content/`          | _This app's_ media — the catalogue is handed to the core, never imported by it. `primer.m4a` is the audio every follower loads inside the unlock gesture. `transcripts/` holds the word-timed files, lazily imported |
+| `src/ui/`, `src/hooks/` | The React host. `useSync()` subscribes to the snapshot; `ui/demo/` is the views, `ui/debug/` the overlay                                                                                                             |
+| `shared/`               | Types and route literals compiled by both the app's and the Worker's tsconfig                                                                                                                                        |
+| `worker/`               | Worker entry (`/api/ice`, `/api/ping`, SPA) and the `SignalRelay` Durable Object                                                                                                                                     |
 
 ### Reusing the core
 
