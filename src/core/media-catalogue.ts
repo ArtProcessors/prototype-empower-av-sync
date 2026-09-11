@@ -28,8 +28,25 @@ export interface MediaOption {
 
 /** Everything a session can play, and what it starts on. */
 export interface MediaCatalogue {
-  /** Every option, in picker order. Must not be empty. */
+  /**
+   * Every option a session can play, in picker order. Must not be empty.
+   *
+   * This is the resolution list: a beat naming an id gets looked up here, so
+   * anything a screen might lead with has to be in it — including whatever a
+   * host keeps out of {@link MediaCatalogue.offered}.
+   */
   options: readonly MediaOption[]
+  /**
+   * The subset a picker should list. A host that offers everything it can play
+   * sets this to {@link MediaCatalogue.options}.
+   *
+   * Separate from `options` because "playable" and "choosable" are not the
+   * same question. A fallback the session leans on when nothing else is named
+   * has to be playable by every device in the room, and has no business in a
+   * menu — putting it in one invites an operator to select the thing that is
+   * meant to mean *nothing was selected*.
+   */
+  offered: readonly MediaOption[]
   /** Which option the screen leads with until the user picks another. */
   defaultId: string
   /**

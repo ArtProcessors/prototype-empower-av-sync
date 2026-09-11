@@ -34,6 +34,8 @@
  * matching soundtrack.
  */
 import type { MediaCatalogue, MediaOption } from '../core/media-catalogue'
+import brandSoundtrack from './brand.m4a'
+import brandVideo from './brand.mp4'
 import primer from './primer.m4a'
 import screenVideo from './screen.mp4'
 
@@ -51,7 +53,7 @@ import screenVideo from './screen.mp4'
 export const PRIMER_SOUNDTRACK_URL: string = primer
 
 /** Selectable video ids broadcast on every beat as `mediaId`. */
-export type VideoId = 'agent327' | 'soh' | 'test' | 'sync45'
+export type VideoId = 'brand' | 'agent327' | 'soh' | 'test' | 'sync45'
 
 /**
  * One video the screen can lead with. The shape is the core's
@@ -64,6 +66,26 @@ export interface VideoOption extends MediaOption {
 
 const LONG_FORM_BASE_URL =
   'https://content.dev.pladia.live/assets/playground/james'
+
+/**
+ * The fallback, and the only entry that is never in the picker.
+ *
+ * A screen that was not told what to lead with leads with this, and an id
+ * nothing recognises resolves to it — which is why it is first in `options`,
+ * the slot {@link mediaById} falls back to. It is deliberately not something
+ * an operator selects: it is what "nothing was selected" looks like, and a
+ * menu entry saying so would be a contradiction.
+ *
+ * It is silent by design. The follower's ring reads the live waveform, so a
+ * room listening to the fallback shows a flat ring — correct, if unexciting:
+ * there is nothing to hear yet.
+ */
+export const BRAND_VIDEO: VideoOption = {
+  id: 'brand',
+  label: 'Pladia — brand loop (20s)',
+  videoUrl: brandVideo,
+  soundtrackUrl: brandSoundtrack,
+}
 
 /** What a room is put in front of. Every page has these, in picker order. */
 export const CONTENT_VIDEOS: VideoOption[] = [
@@ -112,16 +134,20 @@ export const DIAGNOSTIC_VIDEOS: VideoOption[] = [
  * content itself rather than about one page's session: the captions gallery,
  * and {@link videoById}.
  */
-export const VIDEOS: VideoOption[] = [...CONTENT_VIDEOS, ...DIAGNOSTIC_VIDEOS]
+export const VIDEOS: VideoOption[] = [
+  BRAND_VIDEO,
+  ...CONTENT_VIDEOS,
+  ...DIAGNOSTIC_VIDEOS,
+]
 
 /**
  * Video the screen leads with until the user picks another.
  *
- * Content, not the test clip: it has to be something every page can pick its
- * way back to. The shorter of the two real clips, so a screen started by
- * accident is over in four minutes.
+ * The brand loop, so a display that comes up unattended comes up as itself
+ * rather than part-way into somebody's short film. It also has to be something
+ * every page can pick its way back to, which rules out the diagnostic clips.
  */
-export const DEFAULT_VIDEO_ID: VideoId = 'agent327'
+export const DEFAULT_VIDEO_ID: VideoId = 'brand'
 
 /**
  * Look up a video option by id, falling back to the first option when the id
@@ -143,8 +169,15 @@ export function isVideoId(id: string): id is VideoId {
  *   testing clips as well as the content
  */
 export function contentCatalogue(withDiagnostics: boolean): MediaCatalogue {
+  const offered = withDiagnostics
+    ? [...CONTENT_VIDEOS, ...DIAGNOSTIC_VIDEOS]
+    : CONTENT_VIDEOS
+
   return {
-    options: withDiagnostics ? VIDEOS : CONTENT_VIDEOS,
+    // The fallback leads the list it is resolved from, and appears in no
+    // picker at all.
+    options: [BRAND_VIDEO, ...offered],
+    offered,
     defaultId: DEFAULT_VIDEO_ID,
     primerSoundtrackUrl: PRIMER_SOUNDTRACK_URL,
   }

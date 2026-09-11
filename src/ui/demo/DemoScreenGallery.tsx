@@ -292,6 +292,7 @@ function createGallerySession(actions: GallerySessionActions): SyncSession {
     ...BEFORE_START,
     media: {
       options: CATALOGUE.options,
+      offered: CATALOGUE.offered,
       selectedId: CATALOGUE.defaultId,
       selected: mediaById(CATALOGUE, CATALOGUE.defaultId),
     },
@@ -425,6 +426,7 @@ export function DemoScreenGallery() {
     ...scenario.patch,
     media: {
       options: CATALOGUE.options,
+      offered: CATALOGUE.offered,
       selectedId: shownVideoId,
       selected: mediaById(CATALOGUE, shownVideoId),
     },

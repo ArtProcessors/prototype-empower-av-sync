@@ -221,15 +221,15 @@ them needs no config — the Worker (`not_found_handling`), the service worker's
 Everything in the query string configures the page the path chose. Flags follow
 the `?debug=` reading: present and not `0`/`false` means on.
 
-| Parameter        | Effect                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `?debug=1`       | Raise the debug overlay over the normal views                                                     |
-| `?video=<id>`    | Lead with that video (`agent327`, `soh`; `test`/`sync45` need `?debug=1` too) and drop the picker |
-| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                      |
-| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                 |
-| `?runway=<sec>`  | Background free-run runway (default 180)                                                          |
-| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                              |
-| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                              |
+| Parameter        | Effect                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `?debug=1`       | Raise the debug overlay over the normal views                                                              |
+| `?video=<id>`    | Lead with that video (`brand`, `agent327`, `soh`; `test`/`sync45` need `?debug=1` too) and drop the picker |
+| `?autostart=1`   | Screen starts itself, no tap (works because the leader's `<video>` is muted)                               |
+| `?room=<code>`   | Join as a listener — what the screen's QR carries                                                          |
+| `?runway=<sec>`  | Background free-run runway (default 180)                                                                   |
+| `?sinklat=<sec>` | Assumed added latency of the sink leg (default 0.15)                                                       |
+| `?kagain=<0–1>`  | Keep-alive tap gain (default 0.005; `0` disables it)                                                       |
 
 **Precedence**, decided once in `roomToJoin`: an explicit `?room=` wins even when
 blank (a listener's audio is not something a URL can unlock), then `?autostart=`
@@ -325,15 +325,16 @@ sleep log first**, so step 3 has something to compare against.
 ## Content & adding your own
 
 The leader picks the video; the choice rides every beat as `mediaId` so followers
-load the matching audio. Four options ship ([src/content/index.ts](src/content/index.ts)),
-in two lists:
+load the matching audio. Five options ship ([src/content/index.ts](src/content/index.ts)),
+in three lists:
 
-| id         | Video (screen)                         | Audio (followers)               | Delivery                                             | List                  |
-| ---------- | -------------------------------------- | ------------------------------- | ---------------------------------------------------- | --------------------- |
-| `agent327` | `agent-327.mp4` (~38 MB, 3m52s)        | `agent-327.m4a` (~3.6 MB)       | remote, `streaming: true`                            | content (**default**) |
-| `soh`      | `soh.mp4` (~127 MB)                    | `soh.m4a` (~14 MB)              | remote, `streaming: true`                            | content               |
-| `test`     | synthetic clip, flash+click cues (20s) | `primer.m4a`                    | committed; audio **precached**, video runtime-cached | diagnostic            |
-| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, `streaming: true`                            | diagnostic            |
+| id         | Video (screen)                         | Audio (followers)               | Delivery                                             | List                         |
+| ---------- | -------------------------------------- | ------------------------------- | ---------------------------------------------------- | ---------------------------- |
+| `brand`    | `brand.mp4` (~85 KB, 20s)              | `brand.m4a` (silent)            | committed, runtime-cached                            | **fallback** — never offered |
+| `agent327` | `agent-327.mp4` (~38 MB, 3m52s)        | `agent-327.m4a` (~3.6 MB)       | remote, `streaming: true`                            | content                      |
+| `soh`      | `soh.mp4` (~127 MB)                    | `soh.m4a` (~14 MB)              | remote, `streaming: true`                            | content                      |
+| `test`     | synthetic clip, flash+click cues (20s) | `primer.m4a`                    | committed; audio **precached**, video runtime-cached | diagnostic                   |
+| `sync45`   | `sync-test-45mins.mp4` (~860 MB)       | `sync-test-45mins.m4a` (~43 MB) | remote, `streaming: true`                            | diagnostic                   |
 
 `CONTENT_VIDEOS` is what a room is put in front of. `DIAGNOSTIC_VIDEOS` are
 instruments, and `contentCatalogue(withDiagnostics)` appends them only for a
@@ -348,6 +349,16 @@ name. The choice is made once in [App.tsx](src/ui/App.tsx), beside the other
 for `soh`. With `streaming: true` a follower doesn't even fetch the whole
 soundtrack: it pulls ~60 s of compressed audio at a time, roughly 1.3× the audio
 bitrate sustained (~20 KB/s at ~128 kbps), for as long as it is listening.
+
+**The brand loop is the fallback, not a choice.** It is the only entry absent
+from the picker: a screen that was not told what to lead with leads with it, and
+an id nothing recognises resolves to it (it sits first in `options`, which is
+where [mediaById](src/core/media-catalogue.ts) falls back to). Offering it would
+be a contradiction — it is what "nothing was selected" looks like. Its
+soundtrack is silent by design, so a room listening to it shows a flat ring.
+
+That split is why a catalogue carries two lists: `options` is everything a beat
+can resolve to, `offered` is what a picker may list.
 
 A `videoUrl`/`soundtrackUrl` can be a bundled import (precached), a
 `public/media/` path (runtime-cached), or an absolute URL on static hosting.

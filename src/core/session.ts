@@ -172,6 +172,7 @@ export function createSyncSession(options: SyncSessionOptions): SyncSession {
 
   const readMedia = (): MediaSelectionState => ({
     options: catalogue.options,
+    offered: catalogue.offered,
     selectedId: selectedVideoId,
     selected: resolveMedia(selectedVideoId),
   })

@@ -78,6 +78,10 @@ export function DemoScreenStart({
   onHold,
 }: Props) {
   const [sequence, setSequence] = useState<Sequence>('idle')
+  // Whether the session is on something the picker does not list.
+  const onFallback = !state.media.offered.some(
+    video => video.id === state.media.selectedId,
+  )
 
   // A start that came back with an error has nothing to hand over to, so the
   // sequence is abandoned and the button offered again. `becomeScreen` clears
@@ -116,7 +120,18 @@ export function DemoScreenStart({
               value={state.media.selectedId}
               onChange={event => session.selectVideo(event.target.value)}
             >
-              {state.media.options.map(video => (
+              {/* The session can sit on something no picker offers — the
+                  fallback it starts on before anyone chooses. Without an
+                  entry for it the browser would show the first real option
+                  instead, which is a select claiming a choice was made and
+                  naming the wrong film. Disabled, because saying what is on
+                  is not the same as offering it. */}
+              {onFallback && (
+                <option value={state.media.selectedId} disabled>
+                  {state.media.selected.label}
+                </option>
+              )}
+              {state.media.offered.map(video => (
                 <option key={video.id} value={video.id}>
                   {video.label}
                 </option>

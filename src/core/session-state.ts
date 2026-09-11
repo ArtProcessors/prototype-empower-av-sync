@@ -30,8 +30,14 @@ export interface AudioOutputState {
 
 /** Which video the screen leads with. */
 export interface MediaSelectionState {
-  /** Videos the screen can lead with, in picker order. */
+  /**
+   * Videos the screen can lead with, in picker order. Everything the session
+   * can resolve — which is not the same as everything a picker should list;
+   * see {@link MediaSelectionState.offered}.
+   */
   options: readonly MediaOption[]
+  /** The subset a picker should list. */
+  offered: readonly MediaOption[]
   /** Id of the currently selected video. */
   selectedId: string
   /** The selected option itself. */

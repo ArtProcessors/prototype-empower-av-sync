@@ -85,7 +85,12 @@ const HEALTHY: SyncSessionState = {
     backgroundKeepAlive: false,
     engine: 'buffer',
   },
-  media: { options: [NO_MEDIA], selectedId: NO_MEDIA.id, selected: NO_MEDIA },
+  media: {
+    options: [NO_MEDIA],
+    offered: [NO_MEDIA],
+    selectedId: NO_MEDIA.id,
+    selected: NO_MEDIA,
+  },
   keepAwake: { enabled: true, supported: true, held: true },
 }
 

@@ -16,8 +16,9 @@ dev-dist
 *.log
 
 # Large local-only media (real content). Regenerate from source with ffmpeg — see README.
-# The two small files in src/content/ ARE committed: primer.m4a is load-bearing (every
-# follower loads it inside the unlock gesture) and screen.mp4 is the diagnostic clip.
+# The small files in src/content/ ARE committed: primer.m4a is load-bearing (every
+# follower loads it inside the unlock gesture), brand.mp4/.m4a are the default loop,
+# and screen.mp4 is the diagnostic clip.
 public/media/
 
 # Yarn 4 (node-modules linker)
@@ -28,3 +29,7 @@ public/media/
 !.yarn/sdks
 !.yarn/versions
 .pnp.*
+
+# Sentry source-map upload credentials (@sentry/vite-plugin reads this file).
+# Build-time only and a real secret — see .env.example.
+.env.sentry-build-plugin
